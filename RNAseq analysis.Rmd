@@ -1,0 +1,377 @@
+---
+title: "CAD_ZBP1_Rescue"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tximport)
+library(biomaRt)
+library(stringr)
+library(ggfortify)
+library(DESeq2)
+library(pheatmap)
+library(ggpubr)
+library(tidyverse)
+library(cowplot)
+```
+
+```{r, tximport stuff}
+mart <- useMart("ENSEMBL_MART_ENSEMBL",
+                dataset = "mmusculus_gene_ensembl",
+                host='www.ensembl.org')
+
+t2g <- getBM(attributes = c('ensembl_transcript_id',
+                            'ensembl_gene_id',
+                            'external_gene_name',
+                            'refseq_mrna'), mart = mart)
+
+t2g <- rename(t2g, target_id = ensembl_transcript_id, 
+              ext_gene = external_gene_name)
+
+ens2gene <- t2g[,c(2,3)]
+colnames(ens2gene)[2] <- 'Gene'
+ens2gene <- unique(ens2gene)
+
+base_dir <- "CAD_ZBP1_Rescue_quants"
+
+files <- list.files()
+files <- files[1:18]
+samples <- str_sub(files, 1, str_length(files)-9)
+
+salm_dirs <- sapply(samples, function(id) file.path(paste(id,".quant.sf",sep = "")))
+tx2gene <- t2g[,c(1,2)]
+colnames(tx2gene) <- c('TXNAME', 'GENEID')
+
+txi <- tximport(salm_dirs, 
+                type = 'salmon', 
+                tx2gene = tx2gene,
+                dropInfReps = TRUE, 
+                countsFromAbundance = 'lengthScaledTPM')
+
+tpms <- data.frame(txi$abundance) 
+tpms <- tpms[apply(tpms, MARGIN = 1, function(x) any(x > 5)), ] 
+
+```
+
+###A quick look at TPMs
+
+```{r,  looknsee}
+dat <- t(tpms) %>% 
+  as_tibble() %>% 
+  mutate(sample = colnames(tpms))
+
+dat_all <- dat %>%
+  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), by = "_") %>% 
+  select(treatment, fraction, rep, everything(), -cell, -loxp)
+
+autoplot(prcomp(log(dat_all[4:ncol(dat_all)]+1)), 
+         data = dat_all,
+         colour = "treatment", 
+         shape = "fraction") +
+  ggtitle("PCA of log(TPMs)")
+
+```
+
+###Now for normalized counts
+
+```{r,  DEseq stuff}
+conditions <- c("GFP_neurite", "GFP_neurite", "GFP_neurite", "GFP_soma", "GFP_soma", "GFP_soma", "KH34_neurite", "KH34_neurite", "KH34_neurite", "KH34_soma", "KH34_soma", "KH34_soma", "ZBP1_neurite", "ZBP1_neurite", "ZBP1_neurite", "ZBP1_soma", "ZBP1_soma", "ZBP1_soma")
+type <- c("paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end","paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end")
+colData <- data.frame("sample" = samples, "Conditions" = conditions, "Type" = type)
+
+dds <- DESeqDataSetFromTximport(txi, colData = colData, design = ~Conditions)
+dds <- DESeq(dds)
+
+norm_counts <- counts(dds,normalized = TRUE)
+norm_counts <- norm_counts[apply(norm_counts, MARGIN = 1, function(x) any(x > 100)), ]
+
+norm_counts_PCAdat <- t(norm_counts) %>%
+  as_tibble() %>%
+  mutate(sample = colnames(norm_counts)) %>%
+  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), by = "_") %>% 
+  select(treatment, fraction, rep, everything(), -cell, -loxp)
+
+autoplot(prcomp(log(norm_counts_PCAdat[4:ncol(norm_counts_PCAdat)]+1)),
+         data = norm_counts_PCAdat,
+         colour = "treatment", 
+         shape = "fraction") +
+  ggtitle("PCA of log(normalized counts)")
+
+```
+
+##Lets remove that Outlier
+
+```{r, tximport stuff no outlier}
+
+files_outlier <- c(files[1:11], files[13:18])
+
+samples_outlier <- str_sub(files_outlier, 1, str_length(files_outlier)-9)
+
+salm_dirs_outlier <- sapply(samples_outlier, function(id) file.path(paste(id,".quant.sf",sep = "")))
+
+txi_outlier <- tximport(salm_dirs_outlier,
+                        type = 'salmon',
+                        tx2gene = tx2gene, 
+                        dropInfReps = TRUE, 
+                        countsFromAbundance = 'lengthScaledTPM')
+
+tpms_outlier <- data.frame(txi_outlier$abundance)
+tpms_outlier <- tpms_outlier[apply(tpms_outlier[, -1], MARGIN = 1, function(x) all(x > 5)), ] 
+```
+
+###More TPMs
+
+```{r,  looknsee no outlier}
+datoutlier <- dat %>% 
+  filter(sample != "CAD_loxP_KH34_soma_rep3") %>%
+  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), by = "_") %>%
+  select(treatment, fraction, rep, everything(), -cell, -loxp)
+
+pcres_datoutlier <- prcomp(log(datoutlier[4:ncol(datoutlier)]+1))
+autoplot(pcres_datoutlier,
+         data = datoutlier,
+         colour = "treatment", 
+         shape = "fraction") + 
+  ggtitle("PCA of log(TPMs)")
+
+```
+
+
+###More normalized counts
+
+```{r,  DEseq stuff no outlier}
+conditions <- c("GFP_neurite", "GFP_neurite", "GFP_neurite", "GFP_soma", "GFP_soma", "GFP_soma", "KH34_neurite", "KH34_neurite", "KH34_neurite", "KH34_soma", "KH34_soma", "ZBP1_neurite", "ZBP1_neurite", "ZBP1_neurite", "ZBP1_soma", "ZBP1_soma", "ZBP1_soma")
+type <- c("paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end","paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end")
+colData <- data.frame("sample" = samples_outlier, "Conditions" = conditions, "Type" = type)
+
+dds_out <- DESeqDataSetFromTximport(txi_outlier, colData = colData, design = ~Conditions)
+dds_out <- DESeq(dds_out)
+
+norm_counts_out <- counts(dds_out, normalized = TRUE)
+norm_counts_out <- norm_counts_out[apply(norm_counts_out, MARGIN = 1, function(x) all(x > 100)), ]
+
+norm_counts_out_PCAdat <- t(norm_counts_out) %>%
+  as_tibble() %>%
+  mutate(sample = colnames(norm_counts_out)) %>%
+  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), by = "_") %>% 
+  select(treatment, fraction, rep, everything(), -cell, -loxp)
+
+autoplot(prcomp(log(norm_counts_out_PCAdat[4:ncol(norm_counts_out_PCAdat)]+1)),
+         data = norm_counts_out_PCAdat, 
+         colour = "treatment", 
+         shape = "fraction") +  
+  ggtitle("PCA of log(norm_counts)")
+
+temp <- norm_counts_out
+colnames(temp) <- substr(colnames(norm_counts_out),10, 28)
+annoDF <- as.data.frame(colnames(temp)) %>% as_tibble() %>% separate("colnames(temp)",into = c("Construct", "Fraction", "rep"), by = "_" ) %>% select(Construct, Fraction) %>% as.data.frame()
+rownames(annoDF) <- colnames(temp)
+cor_mat <- temp %>% cor(method = "spearman")
+pheatmap(cor_mat, annotation_col = annoDF)
+
+dds2 <- DESeq(dds_out,test="LRT",reduced = ~1)
+
+AllChangesout <- results(dds2)
+rlog_out <- rlog(dds_out)
+rlogMatrix <- assay(rlog_out)
+
+sigChanges <- rownames(AllChangesout)[AllChangesout$padj < 0.01 & !is.na(AllChangesout$padj)]
+sigMat <- rlogMatrix[rownames(rlogMatrix) %in% sigChanges,]
+
+annoDF <- as.data.frame(colData(rlog_out)[,1,drop=FALSE]) %>%
+  as_tibble() %>% 
+  rownames_to_column() %>% 
+  mutate(sample = str_sub(sample, 10, str_length(sample)-5)) %>%
+  as.data.frame()
+rownames(annoDF) <- annoDF$rowname
+annoDF <- annoDF[2]
+
+pheatmap(sigMat,
+         show_rownames = FALSE,
+         annotation_col = annoDF,
+         main = "heatmap of log(norm counts)") 
+
+```
+
+##What about PCA separation on localization ratios?
+
+```{r, LR from norm counts}
+LR_tidy <- norm_counts %>%
+  as.data.frame() %>%  
+  as_tibble() %>%
+  rownames_to_column(var = "Gene") %>% 
+  mutate(LR_GFP_rep1 = CAD_loxP_GFP_neurite_rep1/CAD_loxP_GFP_soma_rep1, LR_GFP_rep2 = CAD_loxP_GFP_neurite_rep2/CAD_loxP_GFP_soma_rep2, LR_GFP_rep3 = CAD_loxP_GFP_neurite_rep3/CAD_loxP_GFP_soma_rep3, LR_KH34_rep1 = CAD_loxP_KH34_neurite_rep1/CAD_loxP_KH34_soma_rep1, LR_KH34_rep2 = CAD_loxP_KH34_neurite_rep2/CAD_loxP_KH34_soma_rep2, LR_KH34_rep3 = CAD_loxP_KH34_neurite_rep3/CAD_loxP_KH34_soma_rep3, LR_ZBP1_rep1 = CAD_loxP_ZBP1_neurite_rep1/CAD_loxP_ZBP1_soma_rep1, LR_ZBP1_rep2 = CAD_loxP_ZBP1_neurite_rep2/CAD_loxP_ZBP1_soma_rep2, LR_ZBP1_rep3 = CAD_loxP_ZBP1_neurite_rep3/CAD_loxP_ZBP1_soma_rep3) %>% 
+  select(Gene, contains("LR"))
+
+is.na(LR_tidy)<-sapply(LR_tidy, is.infinite)
+LR_tidy[is.na(LR_tidy)] <- 0
+
+LRPCAdat <- LR_tidy %>% 
+  select(-Gene) %>% 
+  as.data.frame()
+
+rownames(LRPCAdat) <- LR_tidy$Gene
+LRPCAdat <- t(LRPCAdat) %>% 
+  as_tibble() %>%
+  mutate(sample = colnames(LRPCAdat)) %>%
+  separate(sample, into = c("LR", "treatment", "rep"), by = "_") %>%
+  select(treatment, rep, everything(), -LR)
+
+autoplot(prcomp(log2(LRPCAdat[3:ncol(LRPCAdat)]+1)),
+         data = LRPCAdat, 
+         colour = "treatment") +
+  ggtitle("PCA of log2(Localization Ratio)")
+
+
+```
+
+```{r, LR from norm counts no outlier}
+LR_tidy <- norm_counts_out %>%  
+  as.data.frame() %>%  
+  as_tibble() %>%  
+  rownames_to_column(var = "Gene") %>% 
+  mutate(LR_GFP_rep1 = CAD_loxP_GFP_neurite_rep1/CAD_loxP_GFP_soma_rep1, LR_GFP_rep2 = CAD_loxP_GFP_neurite_rep2/CAD_loxP_GFP_soma_rep2, LR_GFP_rep3 = CAD_loxP_GFP_neurite_rep3/CAD_loxP_GFP_soma_rep3, LR_KH34_rep1 = CAD_loxP_KH34_neurite_rep1/CAD_loxP_KH34_soma_rep1, LR_KH34_rep2 = CAD_loxP_KH34_neurite_rep2/CAD_loxP_KH34_soma_rep2, LR_ZBP1_rep1 = CAD_loxP_ZBP1_neurite_rep1/CAD_loxP_ZBP1_soma_rep1, LR_ZBP1_rep2 = CAD_loxP_ZBP1_neurite_rep2/CAD_loxP_ZBP1_soma_rep2, LR_ZBP1_rep3 = CAD_loxP_ZBP1_neurite_rep3/CAD_loxP_ZBP1_soma_rep3) %>% select(Gene, contains("LR")) 
+is.na(LR_tidy)<-sapply(LR_tidy, is.infinite)
+LR_tidy[is.na(LR_tidy)] <- 0
+
+LRPCAdat <- LR_tidy %>% 
+  select(-Gene) %>% 
+  as.data.frame()
+
+rownames(LRPCAdat) <- LR_tidy$Gene
+LRPCAdat <- t(LRPCAdat)%>% 
+  as_tibble() %>%
+  mutate(sample = colnames(LRPCAdat)) %>% 
+  separate(sample, into = c("LR", "treatment", "rep"), by = "_") %>%
+  select(treatment, rep, everything(), -LR)
+
+autoplot(prcomp(log2(LRPCAdat[3:ncol(LRPCAdat)]+1)),
+         data = LRPCAdat, 
+         colour = "treatment") +
+  ggtitle("PCA of log2(localization ratio)")
+
+cor_mat <- log2(LR_tidy[2:9]) %>% cor(method = "spearman")
+pheatmap(cor_mat)
+
+sigLR <- LR_tidy[apply(LR_tidy[, -1], MARGIN = 1, function(x) any(abs(x) > 2)), ] %>% as.data.frame()
+rownames(sigLR) <- sigLR$Gene
+
+annoDF <- c(LRPCAdat$treatment) %>% as.data.frame()
+rownames(annoDF) <- colnames(sigLR)[2:9]
+colnames(annoDF) <- "Sample"
+
+pheatmap(sigLR[2:9],
+         show_rownames = FALSE,
+         annotation_col = annoDF,
+         scale = "row",
+         main = "heatmap of log2(LR)") 
+
+
+```
+
+
+##Now I'll stop trying to interpret PCA plots and try to determine the quality of the fractionation 
+
+###How do the fractions differ in TPM of different genes
+
+```{r, }
+tidy_dat <- tpms %>%
+  as_tibble() %>% 
+  rownames_to_column() %>%
+  left_join(t2g[,2:3], by = c("rowname" = "ensembl_gene_id")) %>%
+  rename("gene" = ext_gene) %>% 
+  unique() %>% 
+  gather(key = sample, value = tpm, -gene, - rowname) %>%
+  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), by = "_") %>% 
+  mutate(tpm = as.numeric(tpm)) %>% 
+  select(gene, treatment, fraction, rep, tpm)
+
+tidy_dat %>% filter(gene == "Igf2bp1") %>% ggplot(aes(x = treatment, y = as.numeric(tpm), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Transcripts per Million", title = "ZBP1")
+tidy_dat %>% filter(gene == "Actb") %>% ggplot(aes(x = treatment, y = as.numeric(tpm), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Transcripts per Million", title = "Beta Actin")
+tidy_dat %>% filter(gene == "Malat1") %>% ggplot(aes(x = treatment, y = as.numeric(tpm), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Transcripts per Million", title = "Malat1")
+tidy_dat %>% filter(gene == "Gapdh") %>% ggplot(aes(x = treatment, y = as.numeric(tpm), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Transcripts per Million", title = "Gapdh")
+
+
+saveRDS(tidy_dat, file = "CAD_ZBP1_Rescue_tpms")
+saveRDS(txi, file = "CAD_ZBP1_Rescue_txi")
+saveRDS(t2g, file = "t2g")
+```
+
+###How do the fractions differ in LR of different genes
+
+```{r, }
+LR_tidier <- LR_tidy %>%
+  as_tibble() %>% 
+  left_join(t2g[,2:3], by = c("Gene" = "ensembl_gene_id")) %>%
+  rename("gene" = ext_gene) %>% 
+  unique() %>% 
+  gather(key = sample, value = LR, -gene, -Gene) %>%
+  separate(sample, into = c("LRlabel", "treatment", "rep"), by = "_") %>% 
+  mutate(LR = as.numeric(LR)) %>% select(gene, treatment, rep, LR)
+
+#LR_tidier %>% filter(gene == "Igf2bp1") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5)) + geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "ZBP1") + guides(col = FALSE, size = FALSE)
+LR_tidier %>% filter(gene == "Actb") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5)) + geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "Beta Actin") + guides(col = FALSE, size = FALSE)
+LR_tidier %>% filter(gene == "Malat1") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5))+ geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "Malat1") + guides(col = FALSE, size = FALSE)
+LR_tidier %>% filter(gene == "Gapdh") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5)) + geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "Gapdh") + guides(col = FALSE, size = FALSE)
+
+saveRDS(LR_tidier, file = "CAD_ZBP1_Rescue_LR")
+```
+
+###comparing the LRs
+
+```{r, }
+LR_tidier %>% group_by(gene, treatment) %>% summarise(mean = mean(LR)) %>% spread(key = treatment, value = mean) %>% ggplot(aes(x = log2(GFP), y = log2(ZBP1))) + geom_point() + geom_abline(intercept = 0, slope = 1)
+LR_tidier %>% group_by(gene, treatment) %>% summarise(mean = mean(LR)) %>% spread(key = treatment, value = mean) %>% ggplot(aes(x = log2(GFP), y = log2(KH34))) + geom_point() + geom_abline(intercept = 0, slope = 1)
+LR_tidier %>% group_by(gene, treatment) %>% summarise(mean = mean(LR)) %>% spread(key = treatment, value = mean) %>% ggplot(aes(x = log2(ZBP1), y = log2(KH34))) + geom_point() + geom_abline(intercept = 0, slope = 1)
+
+```
+
+##Now a DEseq object comparing all neurite to all soma
+
+```{r, }
+conditions <- c("neurite", "neurite", "neurite", "soma", "soma", "soma", "neurite", "neurite", "neurite", "soma", "soma", "neurite", "neurite", "neurite", "soma", "soma", "soma")
+type <- c("paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end","paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end")
+colData <- data.frame("sample" = samples_outlier, "Conditions" = conditions, "Type" = type)
+
+dds_f <- DESeqDataSetFromTximport(txi_outlier, colData = colData, design = ~Conditions)
+dds_f <- DESeq(dds_f)
+res <- results(dds_f)
+
+```
+
+###some GO subsetting
+
+```{r, }
+simpleres <- res %>%
+  as_tibble() %>%
+  rownames_to_column(var = "ensembl_gene_id") %>%
+  select(ensembl_gene_id, log2FoldChange) %>% 
+  mutate(GO = "All Genes")
+
+RPgenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0005840'), mart = mart) %>% as_tibble() %>% mutate(GO = "RP") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
+
+ETCgenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0022900'), mart = mart) %>% as_tibble() %>% mutate(GO = "ETC") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
+
+nucleargenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0005634'), mart = mart) %>% as_tibble() %>% mutate(GO = "nuclear") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
+
+my_comparisons <- list(c("All Genes", "ETC"),
+                    c("All Genes", "nuclear"),
+                    c("All Genes", "RP"))
+
+rbind(simpleres,RPgenes,ETCgenes,nucleargenes) %>%
+    as_tibble() %>% 
+    ggplot(aes(x = GO, y = -log2FoldChange, fill = GO)) +
+    geom_boxplot(notch = TRUE, outlier.shape = NA) +
+    geom_point(position = position_jitter(width = 0.1), alpha = 0.05) +
+    geom_hline(yintercept = 0) +
+    stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label.y = c(4.75, 5.5, 6.25)) +
+    coord_cartesian(ylim = c(-5,7)) + 
+    guides(fill = FALSE) +
+    ylab("log2(Localization Ratio)") +
+    guides(fill = FALSE)
+
+#that far outlier in all genes is a ribosomal protein pseudogene!
+
+```
+
