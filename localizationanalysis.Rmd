@@ -35,7 +35,7 @@ counts <- data.frame(txi$counts) %>%
                           CAD_loxP_KH34_neurite_rep3,
                           CAD_loxP_KH34_soma_rep1,
                           CAD_loxP_KH34_soma_rep2,
-                          CAD_loxP_KH34_soma_rep3,
+                          CAD_loxP_KH34_soma_rep4,
                           CAD_loxP_ZBP1_neurite_rep1,
                           CAD_loxP_ZBP1_neurite_rep2,
                           CAD_loxP_ZBP1_neurite_rep3,
@@ -43,17 +43,16 @@ counts <- data.frame(txi$counts) %>%
                           CAD_loxP_ZBP1_soma_rep2,
                           CAD_loxP_ZBP1_soma_rep3))) %>% 
   filter(mincount >= 10) %>% 
-  select(-mincount,-Gene) %>% 
+  select(-mincount) %>% 
   data.frame()
 
 rownames(counts) <- counts$Gene
 
 ##Everything below this takes quite a while.
-##KH34 outlier sample was excluded from xtail
 
-#neurite_reads <- counts %>% select(contains("neurite")) %>% select(contains("GFP"), contains("KH34"), -contains("KH34_neurite_rep3"))
-#soma_reads <- counts %>% select(contains("soma")) %>% select(contains("GFP"), contains("KH34"), -contains("KH34_soma_rep3"))
-#conditions <- c("GFP", "GFP", "GFP", "KH34", "KH34")
+#neurite_reads <- counts %>% select(contains("neurite")) %>% select(contains("GFP"), contains("KH34"))
+#soma_reads <- counts %>% select(contains("soma")) %>% select(contains("GFP"), contains("KH34"))
+#conditions <- c("GFP", "GFP", "GFP", "KH34", "KH34",  "KH34")
 #xtail.results <- xtail(soma_reads, neurite_reads, conditions, bins = 10000)
 #xtail.LR <- xtail.results$resultsTable %>%
 #rownames_to_column(var="Gene") %>%
@@ -66,7 +65,7 @@ rownames(counts) <- counts$Gene
 ```
 
 ```{r,  xtail results}
-GFPvsZBP1 <-readRDS(file = "xtail.LR.GFPvsZBP1")
+GFPvsZBP1 <-readRDS(file = "xtail.LR.ZBP1vsGFP")
 GFPvsKH34 <-readRDS(file = "xtail.LR.GFPvsKH34")
 ZBP1vsKH34 <-readRDS(file = "xtail.LR.ZBP1vsKH34")
 
@@ -114,9 +113,9 @@ GFPvsZBP1 %>% mutate(color = ifelse(pvalue.adjust < .01, "FDR < 0.01", "ns")) %>
   geom_point() + 
   scale_color_manual(values=c("Red", "Black")) + 
   scale_alpha_manual(values=c(1, 0.1)) +
-  scale_x_continuous(limits = c(-10, 10)) +
+  scale_x_continuous(limits = c(-4, 4)) +
   ylab("-log(FDR)") +
-  annotate("text", x = c(6,-6), y = c(15,15), label = c("45", "25"), size = 7)
+  annotate("text", x = c(2.5,-2.5), y = c(15,15), label = c("49", "16"), size = 7)
 
 GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% nrow()
 GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% nrow()
@@ -125,9 +124,9 @@ GFPvsKH34 %>% mutate(color = ifelse(pvalue.adjust < .01, "FDR<0.01", "ns")) %>% 
   geom_point() + 
   scale_color_manual(values=c("Red", "Black")) + 
   scale_alpha_manual(values=c(1, 0.1)) +
-  scale_x_continuous(limits = c(-10, 10)) +
+  scale_x_continuous(limits = c(-4, 4)) +
   ylab("-log(FDR)") +
-  annotate("text", x = c(6,-6), y = c(25,25), label = c("62", "44"), size = 7)
+  annotate("text", x = c(2.5,-2.5), y = c(25,25), label = c("87", "71"), size = 7)
 
 GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% nrow()
 GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% nrow()
@@ -136,9 +135,9 @@ ZBP1vsKH34 %>% mutate(color = ifelse(pvalue.adjust < .01, "FDR<0.01", "ns")) %>%
   geom_point() + 
   scale_color_manual(values=c("Red", "Black")) + 
   scale_alpha_manual(values=c(1, 0.1)) +
-  scale_x_continuous(limits = c(-10, 10)) +
+  scale_x_continuous(limits = c(-4, 4)) +
   ylab("-log(FDR)") +
-  annotate("text", x = c(6,-6), y = c(20,20), label = c("29", "28"), size = 7)
+  annotate("text", x = c(2.5,-2.5), y = c(20,20), label = c("60", "47"), size = 7)
   
 
 ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio > 0) %>% nrow()
@@ -146,11 +145,13 @@ ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_l
 ```
 
 ```{r, }
-FLlocgenes <- GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% select(Gene)
+FLlocgenes01 <- GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
+trunclocgenes01 <- GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
+FLvstrunclocgenes01 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
 
-trunclocgenes <- GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% select(Gene)
-
-FLvstrunclocgenes <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio > 0) %>% select(Gene)
+FLlocgenes05 <- GFPvsZBP1 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
+trunclocgenes05 <- GFPvsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
+FLvstrunclocgenes05 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
 
 ##.05/.01 = pval
 ## 7/3 genes are localized when Any ZBP1 construct is overexpressed
