@@ -81,7 +81,7 @@ seq_run <- c("1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "2", "1", "1
 type <- c("paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end","paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end")
 colData <- data.frame("sample" = samples, "Conditions" = conditions, "seq_run" = seq_run, "Type" = type)
 
-dds <- DESeqDataSetFromTximport(txi, colData = colData, design = ~Conditions + seq_run)
+dds <- DESeqDataSetFromTximport(txi, colData = colData, design = ~seq_run + Conditions)
 dds <- DESeq(dds)
 
 norm_counts <- counts(dds,normalized = TRUE)
@@ -269,11 +269,19 @@ simpleres <- res %>%
   select(ensembl_gene_id, log2FoldChange) %>% 
   mutate(GO = "All Genes")
 
-RPgenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0005840'), mart = mart) %>% as_tibble() %>% mutate(GO = "RP") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
+#RPgenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0005840'), mart = mart) %>% as_tibble() %>% mutate(GO = "RP") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
 
-ETCgenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0022900'), mart = mart) %>% as_tibble() %>% mutate(GO = "ETC") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
+#ETCgenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0022900'), mart = mart) %>% as_tibble() %>% mutate(GO = "ETC") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
 
-nucleargenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0005634'), mart = mart) %>% as_tibble() %>% mutate(GO = "nuclear") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
+#nucleargenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0005634'), mart = mart) %>% as_tibble() %>% mutate(GO = "nuclear") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
+
+#saveRDS(RPgenes, file = "Ribosomal_Protein_Gene_list")
+#saveRDS(ETCgenes, file = "ETC_Gene_list")
+#saveRDS(nucleargenes, file = "nuclear_Gene_list")
+
+RPgenes <-readRDS(file = "Ribosomal_Protein_Gene_list")
+ETCgenes <-readRDS(file = "ETC_Gene_list")
+nucleargenes <-readRDS(file = "nuclear_Gene_list")
 
 my_comparisons <- list(c("All Genes", "ETC"),
                     c("All Genes", "nuclear"),
