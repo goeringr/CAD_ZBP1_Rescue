@@ -90,14 +90,16 @@ norm_counts <- norm_counts[apply(norm_counts, MARGIN = 1, function(x) any(x > 10
 norm_counts_PCAdat <- t(norm_counts) %>%
   as_tibble() %>%
   mutate(sample = colnames(norm_counts)) %>%
-  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), by = "_") %>% 
+  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), sep = "_") %>% 
   select(treatment, fraction, rep, everything(), -cell, -loxp)
 
 autoplot(prcomp(log(norm_counts_PCAdat[4:ncol(norm_counts_PCAdat)]+1)),
          data = norm_counts_PCAdat,
-         colour = "treatment", 
+         colour = "treatment",
+         size = 5, 
          shape = "fraction") +
-  ggtitle("PCA of log(normalized counts)")
+  ggtitle("PCA of log(normalized counts)") +
+  theme_cowplot()
 
 ```
 
@@ -108,7 +110,7 @@ autoplot(prcomp(log(norm_counts_PCAdat[4:ncol(norm_counts_PCAdat)]+1)),
 
 temp <- norm_counts
 colnames(temp) <- substr(colnames(norm_counts),10, 28)
-annoDF <- as.data.frame(colnames(temp)) %>% as_tibble() %>% separate("colnames(temp)",into = c("Construct", "Fraction", "rep"), by = "_" ) %>% select(Construct, Fraction) %>% as.data.frame()
+annoDF <- as.data.frame(colnames(temp)) %>% as_tibble() %>% separate("colnames(temp)",into = c("Construct", "Fraction", "rep"), sep = "_" ) %>% select(Construct, Fraction) %>% as.data.frame()
 rownames(annoDF) <- colnames(temp)
 cor_mat <- temp %>% cor(method = "spearman")
 pheatmap(cor_mat, annotation_col = annoDF)
@@ -158,13 +160,16 @@ rownames(LRPCAdat) <- LR_tidy$Gene
 LRPCAdat <- t(LRPCAdat) %>% 
   as_tibble() %>%
   mutate(sample = colnames(LRPCAdat)) %>%
-  separate(sample, into = c("LR", "treatment", "rep"), by = "_") %>%
+  separate(sample, into = c("LR", "treatment", "rep"), sep = "_") %>%
   select(treatment, rep, everything(), -LR)
 
 autoplot(prcomp(log2(LRPCAdat[3:ncol(LRPCAdat)]+1)),
          data = LRPCAdat, 
-         colour = "treatment") +
-  ggtitle("PCA of log2(Localization Ratio)")
+         colour = "treatment",
+         size = 5) +
+  ggtitle("PCA of log2(Localization Ratio)") +
+  theme_cowplot() +
+  guides(size = FALSE)
 
 
 ```
@@ -195,24 +200,28 @@ pheatmap(sigLR[2:10],
 ###How do the fractions differ in TPM of different genes
 
 ```{r, }
-tidy_dat <- tpms %>%
+tidy_dat <- norm_counts %>%
   as_tibble() %>% 
-  rownames_to_column() %>%
-  left_join(t2g[,2:3], by = c("rowname" = "ensembl_gene_id")) %>%
+  mutate(ensembl_gene_id = rownames(norm_counts)) %>%
+  left_join(t2g[,2:3]) %>%
   rename("gene" = ext_gene) %>% 
   unique() %>% 
-  gather(key = sample, value = tpm, -gene, - rowname) %>%
-  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), by = "_") %>% 
-  mutate(tpm = as.numeric(tpm)) %>% 
-  select(gene, treatment, fraction, rep, tpm)
+  gather(key = sample, value = norm_counts, -gene, - ensembl_gene_id) %>%
+  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), sep = "_") %>% 
+  mutate(norm_counts = as.numeric(norm_counts)) %>% 
+  select(gene, treatment, fraction, rep, norm_counts)
 
-tidy_dat %>% filter(gene == "Igf2bp1") %>% ggplot(aes(x = treatment, y = as.numeric(tpm), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Transcripts per Million", title = "ZBP1")
-tidy_dat %>% filter(gene == "Actb") %>% ggplot(aes(x = treatment, y = as.numeric(tpm), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Transcripts per Million", title = "Beta Actin")
-tidy_dat %>% filter(gene == "Malat1") %>% ggplot(aes(x = treatment, y = as.numeric(tpm), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Transcripts per Million", title = "Malat1")
-tidy_dat %>% filter(gene == "Gapdh") %>% ggplot(aes(x = treatment, y = as.numeric(tpm), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Transcripts per Million", title = "Gapdh")
+tidy_dat %>% filter(gene == "Igf2bp1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "ZBP1") +
+  theme_cowplot()
+tidy_dat %>% filter(gene == "Actb") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "Beta Actin") + theme_cowplot()
+tidy_dat %>% filter(gene == "Malat1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "Malat1")
+tidy_dat %>% filter(gene == "Gapdh") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "Gapdh")
+tidy_dat %>% filter(gene == "Tsc1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "ZBP1") +
++ theme_cowplot()
+tidy_dat %>% filter(gene == "Ranbp1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "ZBP1") +
++ theme_cowplot()
 
-
-saveRDS(tidy_dat, file = "CAD_ZBP1_Rescue_tpms")
+#saveRDS(tidy_dat, file = "CAD_ZBP1_Rescue_tpms")
 saveRDS(txi, file = "CAD_ZBP1_Rescue_txi")
 saveRDS(t2g, file = "t2g")
 ```

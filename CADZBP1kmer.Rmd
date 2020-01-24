@@ -1,0 +1,117 @@
+---
+title: "ZBP1 CAD kmer"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(kmer)
+library(biomaRt)
+library(ggpubr)
+library(tidyverse)
+library(cowplot)
+
+```
+
+```{r, get loc gene lists and seqs}
+longest_3utr_Seq <- readRDS(file = "longest_3UTR_seq_biomaRt.txt")
+
+FL_loc_gene <- readRDS(file = "FLlocgenes01.txt")
+trunc_loc_gene <- readRDS(file = "trunclocgenes01.txt")
+FLvstrunc_loc_gene <- readRDS(file = "FLvstrunclocgenes01")
+
+FL_ctrl_gene <- readRDS(file = "FLctrlgenes.txt")
+trunc_ctrl_gene <- readRDS(file = "truncctrlgenes.txt")
+FLvT_ctrl_gene <- readRDS(file = "FLversustruncctrlgenes.txt")
+
+FL_ctrl_gene <- anti_join(FL_ctrl_gene, FL_loc_gene)
+trunc_ctrl_gene <- anti_join(trunc_ctrl_gene, trunc_loc_gene)
+FLvT_ctrl_gene <- anti_join(FLvT_ctrl_gene, FLvstrunc_loc_gene)
+
+FL_loc_seq <- left_join(FL_loc_gene, longest_3utr_Seq) %>% as_tibble() %>% rename(seq = `3utr`) %>% filter(seq != "Sequence unavailable", length > 6) %>% select(-length) %>% mutate(sepseq = strsplit(tolower(seq), "")) %>% select(ensembl_gene_id, seq, sepseq)
+FL_ctrl_seq <- left_join(FL_ctrl_gene, longest_3utr_Seq) %>% as_tibble() %>% rename(seq = `3utr`) %>% filter(seq != "Sequence unavailable", length > 6) %>% select(-length) %>% mutate(sepseq = strsplit(tolower(seq), "")) %>% select(ensembl_gene_id, seq, sepseq)
+
+trunc_loc_seq <- left_join(trunc_loc_gene, longest_3utr_Seq) %>% as_tibble() %>% rename(seq = `3utr`) %>% filter(seq != "Sequence unavailable", length > 6) %>% select(-length) %>% mutate(sepseq = strsplit(tolower(seq), "")) %>% select(ensembl_gene_id, seq, sepseq)
+trunc_ctrl_seq <- left_join(trunc_ctrl_gene, longest_3utr_Seq) %>% as_tibble() %>% rename(seq = `3utr`) %>% filter(seq != "Sequence unavailable", length > 6) %>% select(-length) %>% mutate(sepseq = strsplit(tolower(seq), "")) %>% select(ensembl_gene_id, seq, sepseq)
+
+FLvT_loc_seq <- left_join(FLvstrunc_loc_gene, longest_3utr_Seq) %>% as_tibble() %>% rename(seq = `3utr`) %>% filter(seq != "Sequence unavailable", length > 6) %>% select(-length) %>% mutate(sepseq = strsplit(tolower(seq), "")) %>% select(ensembl_gene_id, seq, sepseq)
+FLvT_ctrl_seq <- left_join(FLvT_ctrl_gene, longest_3utr_Seq) %>% as_tibble() %>% rename(seq = `3utr`) %>% filter(seq != "Sequence unavailable", length > 6) %>% select(-length) %>% mutate(sepseq = strsplit(tolower(seq), "")) %>% select(ensembl_gene_id, seq, sepseq)
+
+```
+
+```{r, kcount}
+fisher <- function(a,b, c, d){
+  mat <- matrix(c(a, b, c, d), nr = 2)
+  fisher.test(mat, alternative = "two.sided")$p.value
+}
+
+#FL_kmer <- kcount(pull(FL_loc_seq, sepseq), k = 6) %>% colSums() %>% data.frame(kmer = names(.), value = .) %>% as_tibble() %>% rename(FL = value)
+ 
+#FL_ctrl_kmer <- kcount(pull(FL_ctrl_seq, sepseq), k = 6) %>% colSums() %>% data.frame(kmer = names(.), value = .) %>% as_tibble() %>% rename(ctrl = value)
+
+#FL_kmer_stats <- left_join(FL_ctrl_kmer, FL_kmer) %>% na.omit() %>% mutate(ctrl_freq = ctrl / sum(ctrl), FL_freq = FL / sum(FL)) %>% mutate(log2FC = log2(FL_freq/ctrl_freq)) %>% mutate(c_tot = sum(ctrl)-ctrl, FL_tot = sum(FL)-FL) %>% rowwise() %>% mutate(pval = fisher(FL, ctrl, FL_tot, c_tot)) %>% ungroup() %>% mutate(p_adj = p.adjust(pval, method = "BH")) %>% select(kmer, ctrl_freq, FL_freq, log2FC, pval, p_adj) 
+
+#saveRDS(FL_kmer_stats, file = "FL_kmer_stats_by_R.txt")
+
+
+#trunc_kmer <- kcount(pull(trunc_loc_seq, sepseq), k = 6) %>% colSums() %>% data.frame(kmer = names(.), value = .) %>% as_tibble() %>% rename(trunc = value)
+ 
+#trunc_ctrl_kmer <- kcount(pull(trunc_ctrl_seq, sepseq), k = 6) %>% colSums() %>% data.frame(kmer = names(.), value = .) %>% as_tibble() %>% rename(ctrl = value)
+
+#trunc_kmer_stats <- left_join(trunc_ctrl_kmer, trunc_kmer) %>% na.omit() %>%  mutate(ctrl_freq = ctrl / sum(ctrl), trunc_freq = trunc / sum(trunc)) %>% mutate(log2FC = log2(trunc_freq/ctrl_freq)) %>% mutate(c_tot = sum(ctrl)-ctrl, trunc_tot = sum(trunc)-trunc) %>% rowwise() %>% mutate(pval = fisher(trunc, ctrl, trunc_tot, c_tot)) %>% ungroup() %>% mutate(p_adj = p.adjust(pval, method = "BH")) %>% select(kmer, ctrl_freq, trunc_freq, log2FC, pval, p_adj) 
+
+#saveRDS(trunc_kmer_stats, file = "trunc_kmer_stats_by_R.txt")
+
+
+#FLvT_kmer <- kcount(pull(FLvT_loc_seq, sepseq), k = 6) %>% colSums() %>% data.frame(kmer = names(.), value = .) %>% as_tibble() %>% rename(FLvT = value)
+ 
+#FLvT_ctrl_kmer <- kcount(pull(FLvT_ctrl_seq, sepseq), k = 6) %>% colSums() %>% data.frame(kmer = names(.), value = .) %>% as_tibble()  %>% rename(ctrl = value)
+
+#FLvT_kmer_stats <- left_join(FLvT_ctrl_kmer, FLvT_kmer) %>% na.omit() %>%  mutate(ctrl_freq = ctrl / sum(ctrl), FLvT_freq = FLvT / sum(FLvT)) %>% mutate(log2FC = log2(FLvT_freq/ctrl_freq)) %>% mutate(c_tot = sum(ctrl)-ctrl, FLvT_tot = sum(FLvT)-FLvT) %>% rowwise() %>% mutate(pval = fisher(FLvT, ctrl, FLvT_tot, c_tot)) %>% ungroup() %>% mutate(p_adj = p.adjust(pval, method = "BH")) %>% select(kmer, ctrl_freq, FLvT_freq, log2FC, pval, p_adj) 
+
+#saveRDS(FLvT_kmer_stats, file = "FLvT_kmer_stats_by_R.txt")
+
+FL_kmer_stats <- readRDS(file = "FL_kmer_stats_by_R.txt")
+trunc_kmer_stats <- readRDS(file = "trunc_kmer_stats_by_R.txt")
+FLvT_kmer_stats <- readRDS(file = "FLvT_kmer_stats_by_R.txt")
+
+```
+
+```{r, plots with r data}
+FL <- FL_kmer_stats %>% mutate(sig = ifelse(p_adj < 0.05, "0.05", ""))
+FL %>% ggplot(aes(x = log2FC, y = -log(p_adj), alpha = sig, col = sig)) + geom_point() + scale_color_manual(values = c("Black", "Red")) + scale_alpha_manual(values = c(0.01, 1)) + geom_text(data = subset(FL, sig == "0.05"), aes(label = kmer), nudge_y = 1) + theme_cowplot() + labs(title = "neurite enriched kmers comparing ZBP1 FL to GFP")
+
+trunc <- trunc_kmer_stats %>% mutate(sig = ifelse(p_adj < 0.05, "0.05", ""))
+trunc %>% ggplot(aes(x = log2FC, y = -log(p_adj), alpha = sig, col = sig)) + geom_point() + scale_color_manual(values = c("Black", "Red")) + scale_alpha_manual(values = c(0.01, 1)) + geom_text(data = subset(trunc, sig == "0.05"), aes(label = kmer), nudge_y = 1) + theme_cowplot() + labs(title = "neurite enriched kmers comparing ZBP1-KH34 to GFP")
+
+FLvT <- FLvT_kmer_stats %>% mutate(sig = ifelse(p_adj < 0.01, "0.01", ""))
+FLvT %>% ggplot(aes(x = log2FC, y = -log(p_adj), alpha = sig, col = sig)) + geom_point() + scale_color_manual(values = c("Black", "Red")) + scale_alpha_manual(values = c(0.01, 1)) + geom_text(data = subset(FLvT, sig == "0.01"), aes(label = kmer), nudge_y = 1) + theme_cowplot() + labs(title = "neurite enriched kmers comparing ZBP1 FL to ZBP1-KH34")
+
+```
+
+```{r, BactZC}
+allsubstr <- function(x, n) substring(x, 1:(nchar(x) - n + 1), n:nchar(x))
+
+BAZC_BP <- "GGACT[ATGC]{10,25}[CA]CA[CT]"
+#was {11,16}
+#now{10-25}
+#swapped orientation?
+
+FL <- FL_loc_seq %>% rowwise() %>%  mutate(sub = list(allsubstr(seq, nchar("ACACCCACACCC"))), min_BAZC = length(agrep("ACACCCACACCC", unlist(sub), max.distance = 2)),  BPZC = str_count(string = seq, pattern = BAZC_BP)) %>% select(ensembl_gene_id, min_BAZC, BPZC)
+
+FL_ctrl <- FL_ctrl_seq %>% rowwise() %>%  mutate(sub = list(allsubstr(seq, nchar("ACACCCACACCC"))), min_BAZC = length(agrep("ACACCCACACCC", unlist(sub), max.distance = 2)),  BPZC = str_count(string = seq, pattern = BAZC_BP)) %>% select(ensembl_gene_id, min_BAZC, BPZC) %>% rename(min_BAZC_ctrl = min_BAZC, BPZC_ctrl = BPZC) 
+
+full_join(FL_ctrl, FL, by = "ensembl_gene_id") %>% gather(-ensembl_gene_id, key = key, value = counts) %>% ggplot(aes(x = key, y = log2(counts), fill = key)) +  geom_boxplot() + geom_violin() + geom_point(position = "jitter", alpha = 0.25) + theme_classic()
+
+comparisons <- list(c("BPZC", "BPZC_ctrl"), c("min_BAZC", "min_BAZC_ctrl"))
+
+full_join(FL_ctrl, FL, by = "ensembl_gene_id") %>% gather(-ensembl_gene_id, key = key, value = counts) %>% left_join(., longest_3utr_Seq) %>% mutate(norm_counts = counts/length) %>% ggplot(aes(x = key, y = log2(norm_counts), fill = key)) + geom_violin() +  geom_boxplot() + geom_point(position = "jitter", alpha = 0.25) + theme_classic() + stat_compare_means(comparisons = comparisons)
+
+FL %>% ungroup() %>% mutate(contains_min = ifelse(min_BAZC != 0, 1, 0), contains_BP = ifelse(BPZC != 0, 1, 0)) %>%  summarize(sum_min = sum(contains_min)/ nrow(FL), sum_BP = sum(contains_BP)/nrow(FL))
+
+FL_ctrl %>% ungroup() %>% mutate(contains_min_ctrl = ifelse(min_BAZC_ctrl != 0, 1, 0), contains_BP_ctrl = ifelse(BPZC_ctrl != 0, 1, 0)) %>%  summarize(sum_min = sum(contains_min_ctrl)/ nrow(FL_ctrl), sum_BP = sum(contains_BP_ctrl)/nrow(FL_ctrl))
+
+full_join(FL_ctrl, FL, by = "ensembl_gene_id") %>% mutate(contains_min = ifelse(min_BAZC != 0, 1, 0), contains_BP = ifelse(BPZC != 0, 1, 0), contains_min_ctrl = ifelse(min_BAZC_ctrl != 0, 1, 0), contains_BP_ctrl = ifelse(BPZC_ctrl != 0, 1, 0)) %>%  select(-min_BAZC_ctrl, -BPZC_ctrl, -min_BAZC, -BPZC) %>%  gather(-ensembl_gene_id, key = key, value = counts) %>% ggplot(aes(x = key, y = counts, fill = key)) +  geom_boxplot() + geom_violin() + geom_point(position = "jitter", alpha = 0.25) + theme_classic()
+
+```
+

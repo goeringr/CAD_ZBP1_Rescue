@@ -7,9 +7,11 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(biomaRt)
 library(DESeq2)
-library(tidyverse)
 library(cowplot)
 library(xtail)
+library(tidyverse)
+library(UpSetR)
+library(enrichR)
 ```
 
 ```{r, }
@@ -43,7 +45,7 @@ counts <- data.frame(txi$counts) %>%
                           CAD_loxP_ZBP1_soma_rep2,
                           CAD_loxP_ZBP1_soma_rep3))) %>% 
   filter(mincount >= 10) %>% 
-  select(-mincount) %>% 
+  dplyr::select(-mincount) %>% 
   data.frame()
 
 rownames(counts) <- counts$Gene
@@ -115,7 +117,8 @@ GFPvsZBP1 %>% mutate(color = ifelse(pvalue.adjust < .01, "FDR < 0.01", "ns")) %>
   scale_alpha_manual(values=c(1, 0.1)) +
   scale_x_continuous(limits = c(-4, 4)) +
   ylab("-log(FDR)") +
-  annotate("text", x = c(2.5,-2.5), y = c(15,15), label = c("49", "16"), size = 7)
+  annotate("text", x = c(2.5,-2.5), y = c(15,15), label = c("49", "16"), size = 7) +
+  theme_cowplot()
 
 GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% nrow()
 GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% nrow()
@@ -126,7 +129,8 @@ GFPvsKH34 %>% mutate(color = ifelse(pvalue.adjust < .01, "FDR<0.01", "ns")) %>% 
   scale_alpha_manual(values=c(1, 0.1)) +
   scale_x_continuous(limits = c(-4, 4)) +
   ylab("-log(FDR)") +
-  annotate("text", x = c(2.5,-2.5), y = c(25,25), label = c("87", "71"), size = 7)
+  annotate("text", x = c(2.5,-2.5), y = c(25,25), label = c("87", "71"), size = 7)+
+  theme_cowplot()
 
 GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% nrow()
 GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% nrow()
@@ -137,7 +141,8 @@ ZBP1vsKH34 %>% mutate(color = ifelse(pvalue.adjust < .01, "FDR<0.01", "ns")) %>%
   scale_alpha_manual(values=c(1, 0.1)) +
   scale_x_continuous(limits = c(-4, 4)) +
   ylab("-log(FDR)") +
-  annotate("text", x = c(2.5,-2.5), y = c(20,20), label = c("60", "47"), size = 7)
+  annotate("text", x = c(2.5,-2.5), y = c(20,20), label = c("60", "47"), size = 7)+
+  theme_cowplot()
   
 
 ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio > 0) %>% nrow()
@@ -145,17 +150,194 @@ ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_l
 ```
 
 ```{r, }
-FLlocgenes01 <- GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
-trunclocgenes01 <- GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
-FLvstrunclocgenes01 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
+FLlocgenes01 <- GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% dplyr::select(ensembl_gene_id)
+trunclocgenes01 <- GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% dplyr::select(ensembl_gene_id)
+FLvstrunclocgenes01 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio > 0) %>% dplyr::select(ensembl_gene_id)
 
-FLlocgenes05 <- GFPvsZBP1 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
-trunclocgenes05 <- GFPvsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
-FLvstrunclocgenes05 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio > 0) %>% select(ensembl_gene_id)
+FLlocgenes05 <- GFPvsZBP1 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% dplyr::select(ensembl_gene_id)
+trunclocgenes05 <- GFPvsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% dplyr::select(ensembl_gene_id)
+FLvstrunclocgenes05 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio > 0) %>% dplyr::select(ensembl_gene_id)
 
 ##.05/.01 = pval
 ## 7/3 genes are localized when Any ZBP1 construct is overexpressed
-##23/14 genes are localized in ZBP over GFP and ZBP over KH34
+##23/25 genes are localized in ZBP over GFP and ZBP over KH34
 ```
 
+```{r, what are the chances}
+#neurite localization agreement between FLvsGFP and FLvsKH34
+sum(unlist(FLlocgenes01) %in% unlist(FLvstrunclocgenes01))
+phyper(25,49,nrow(GFPvsZBP1)-49,60, lower.tail = FALSE)
+
+#soma localization agreement between FLvsGFP and FLvsKH34
+s_ZG_01 <- GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% dplyr::select(ensembl_gene_id)
+s_ZG_05 <- GFPvsZBP1 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% dplyr::select(ensembl_gene_id)
+s_ZK_01 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio < 0) %>% dplyr::select(ensembl_gene_id)
+s_ZK_05 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio < 0) %>% dplyr::select(ensembl_gene_id)
+s_KG_05 <- GFPvsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% dplyr::select(ensembl_gene_id)
+
+#soma localization agreement between FLvsGFP and FLvsKH34
+sum(unlist(s_ZG_01) %in% unlist(s_ZK_01))
+phyper(10,16,nrow(GFPvsZBP1)-16,47, lower.tail = FALSE)
+
+#Genes to make oligos out of:
+OligoGeneList <- s_ZG_01 %>% rbind(., s_ZK_01) %>% rbind(., FLlocgenes01) %>% rbind(FLvstrunclocgenes01) %>% unlist() %>% unique()
+#or should we remove genes localized by the truncation?
+OligoGeneList_trunc <- s_ZG_01 %>% rbind(., s_ZK_01) %>% rbind(., FLlocgenes01) %>% rbind(FLvstrunclocgenes01) %>% anti_join(., trunclocgenes05) %>% anti_join(., s_KG_05) %>% unlist() %>% unique()
+
+upset_dat_01 <- list(neurite_FLvG = pull(FLlocgenes01, ensembl_gene_id), neurite_FLvT = pull(FLvstrunclocgenes01, ensembl_gene_id), soma_FLvG = pull(s_ZG_01, ensembl_gene_id), soma_FLvT = pull(s_ZK_01, ensembl_gene_id))
+upset_dat_05 <- list(neurite_FLvG = pull(FLlocgenes05, ensembl_gene_id), neurite_FLvT = pull(FLvstrunclocgenes05, ensembl_gene_id), soma_FLvG = pull(s_ZG_05, ensembl_gene_id), soma_FLvT = pull(s_ZK_05, ensembl_gene_id))
+
+upset(fromList(upset_dat_01), order.by = "freq", empty.intersections = "on")
+
+upset(fromList(upset_dat_05), order.by = "freq", empty.intersections = "on")
+
+```
+
+```{r, GO, fig.width = 25}
+ensembl <- useMart("ensembl", dataset="mmusculus_gene_ensembl")
+
+dbs <- listEnrichrDbs()
+dbs <- c("GO_Molecular_Function_2018", "GO_Cellular_Component_2018", "GO_Biological_Process_2018" , "ChEA_2016" ,"KEGG_2019_Mouse")
+
+soma_gene_list <- s_ZG_05 %>% rbind(., s_ZK_05) %>% unique()
+soma_gene_name <- getBM(attributes=c('ensembl_gene_id',
+                   'external_gene_name'),
+      filters = "ensembl_gene_id",
+      values = pull(soma_gene_list, ensembl_gene_id),
+      mart = ensembl) %>% pull(., external_gene_name)
+
+neurite_gene_list <- FLlocgenes05 %>% rbind(., FLvstrunclocgenes05) %>% unique()
+neurite_gene_name <- getBM(attributes = c("ensembl_gene_id", "external_gene_name"), filters = "ensembl_gene_id", values = pull(neurite_gene_list, ensembl_gene_id), mart = ensembl) %>% pull(., external_gene_name)
+
+soma_genes <- enrichr(soma_gene_name, dbs)
+soma_genes[["GO_Biological_Process_2018"]] %>% as_tibble() %>% arrange(Adjusted.P.value, P.value) %>% head(20) %>% dplyr::select(Term, Overlap, P.value, Adjusted.P.value)
+soma_genes[["GO_Molecular_Function_2018"]] %>% as_tibble() %>% arrange(Adjusted.P.value, P.value) %>% head(20) %>% dplyr::select(Term, Overlap, P.value, Adjusted.P.value)
+soma_genes[["GO_Cellular_Component_2018"]] %>% as_tibble() %>% arrange(Adjusted.P.value, P.value) %>% head(20) %>% dplyr::select(Term, Overlap, P.value, Adjusted.P.value)
+
+neurite_genes <- enrichr(neurite_gene_name, dbs)
+neurite_genes[["GO_Biological_Process_2018"]] %>% as_tibble() %>% arrange(Adjusted.P.value, P.value) %>% head(20) %>% dplyr::select(Term, Overlap, P.value, Adjusted.P.value)
+neurite_genes[["GO_Molecular_Function_2018"]] %>% as_tibble() %>% arrange(Adjusted.P.value, P.value) %>% head(20) %>% dplyr::select(Term, Overlap, P.value, Adjusted.P.value)
+neurite_genes[["GO_Cellular_Component_2018"]] %>% as_tibble() %>% arrange(Adjusted.P.value, P.value) %>% head(20) %>% dplyr::select(Term, Overlap, P.value, Adjusted.P.value)
+
+```
+
+```{r, smFISH candidate selection}
+
+##Candidates should be genes localized by KH34 domain but not the truncated ZBP1
+##Also need high enough expression (TPM > 20)
+
+tpms <- readRDS("ZBP1CADtpms.txt")
+TPM_ave <- tpms %>% as_tibble() %>% mutate(GeneID = rownames(tpms)) %>% dplyr::select(GeneID, everything()) %>% gather(-GeneID, key = sample, value = TPM) %>% separate(sample, into = c("cell", "lox","rescue","compartment","rep")) %>% group_by(GeneID, compartment) %>% summarise(ave = mean(TPM)) %>% spread(value = ave, key = compartment) %>% S4Vectors::rename("neurite" = "Ave_n_TPM", "soma" = "Ave_s_TPM")
+
+high_enough <- TPM_ave %>% filter(Ave_n_TPM > 20 && Ave_s_TPM > 20)
+high_enough_soma <- TPM_ave %>% filter(Ave_s_TPM > 20)
+
+soma_Z_K_shared_genes <- inner_join(s_ZG_05, s_ZK_05) %>% anti_join(., s_KG_05) %>% filter(ensembl_gene_id %in% pull(high_enough_soma, GeneID))
+neurite_Z_K_shared_genes <- inner_join(FLlocgenes01, FLvstrunclocgenes01) %>% anti_join(., trunclocgenes05) %>% filter(ensembl_gene_id %in% pull(high_enough, GeneID))
+```
+
+```{r,  nice plots}
+##Plot where all candidates are on LR map
+
+GFPvsZBP1 %>% mutate(color = ifelse(ensembl_gene_id %in% pull(soma_Z_K_shared_genes, ensembl_gene_id), "soma", ifelse(ensembl_gene_id %in% pull(neurite_Z_K_shared_genes, ensembl_gene_id), "neurite", "other"))) %>% na.omit %>%  ggplot(aes(x = ZBP1_log2LR - GFP_log2LR, y = -log(pvalue.adjust), col = color, alpha = color)) + 
+    geom_point() + 
+    scale_color_manual(values=c("Blue", "Black", "Red")) + 
+    scale_alpha_manual(values=c(1, 0.1, 1)) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    ylab("-log(FDR)") +
+    theme_cowplot()
+
+ZBP1vsKH34 %>% mutate(color = ifelse(ensembl_gene_id %in% pull(soma_Z_K_shared_genes, ensembl_gene_id), "soma", ifelse(ensembl_gene_id %in% pull(neurite_Z_K_shared_genes, ensembl_gene_id), "neurite", "other"))) %>% na.omit %>%  ggplot(aes(x = ZBP1_log2LR - KH34_log2LR, y = -log(pvalue.adjust), col = color, alpha = color)) + 
+    geom_point() + 
+    scale_color_manual(values=c("Blue", "Black", "Red")) + 
+    scale_alpha_manual(values=c(1, 0.1, 1)) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    ylab("-log(FDR)") +
+    theme_cowplot() 
+
+```
+
+```{r,  picking smiFISH candidates}
+##Lists of these genes
+GFPvsZBP1 %>% mutate(color = ifelse(ensembl_gene_id %in% pull(soma_Z_K_shared_genes, ensembl_gene_id), "soma", ifelse(ensembl_gene_id %in% pull(neurite_Z_K_shared_genes, ensembl_gene_id), "neurite", "other"))) %>% na.omit %>% filter(color == "neurite") %>% dplyr::select(ensembl_gene_id, Gene, log2FC_LR_final, pvalue.adjust) %>% arrange(pvalue.adjust, log2FC_LR_final) %>% head(10)
+
+ZBP1vsKH34 %>% mutate(color = ifelse(ensembl_gene_id %in% pull(soma_Z_K_shared_genes, ensembl_gene_id), "soma", ifelse(ensembl_gene_id %in% pull(neurite_Z_K_shared_genes, ensembl_gene_id), "neurite", "other"))) %>% na.omit %>% filter(color == "neurite") %>% dplyr::select(ensembl_gene_id, Gene, log2FC_LR_final, pvalue.adjust) %>% arrange(pvalue.adjust, log2FC_LR_final) %>% head(10)
+
+sm_neurite_cand <- c("ENSMUSG00000026674", "ENSMUSG00000030536") # ,"ENSMUSG00000032826")
+
+GFPvsZBP1 %>% mutate(color = ifelse(ensembl_gene_id %in% pull(soma_Z_K_shared_genes, ensembl_gene_id), "soma", ifelse(ensembl_gene_id %in% pull(neurite_Z_K_shared_genes, ensembl_gene_id), "neurite", "other"))) %>% na.omit %>% filter(color == "soma") %>% dplyr::select(ensembl_gene_id, Gene, log2FC_LR_final, pvalue.adjust) %>% arrange(desc(log2FC_LR_final), pvalue.adjust) %>% head(10)
+
+ZBP1vsKH34 %>% mutate(color = ifelse(ensembl_gene_id %in% pull(soma_Z_K_shared_genes, ensembl_gene_id), "soma", ifelse(ensembl_gene_id %in% pull(neurite_Z_K_shared_genes, ensembl_gene_id), "neurite", "other"))) %>%  na.omit() %>% filter(color == "soma") %>% dplyr::select(ensembl_gene_id, Gene, log2FC_LR_final, pvalue.adjust) %>% arrange(desc(log2FC_LR_final), pvalue.adjust) %>% head(10)
+
+#Soma candidates are lowly expressed and low LR changes
+tpms %>% as_tibble() %>% mutate(GeneID = rownames(tpms)) %>% filter(GeneID == "ENSMUSG00000041794" | GeneID == "ENSMUSG00000035569" | GeneID == "ENSMUSG00000029416")
+
+sm_soma_cand <- c("ENSMUSG00000035569", "ENSMUSG00000029416", "ENSMUSG00000041794")
+
+controls <- c("ENSMUSG00000005732", "ENSMUSG00000026812", "ENSMUSG00000025630")
+
+##plot the selected candidates
+GZ_plot <- GFPvsZBP1 %>% mutate(color = ifelse(ensembl_gene_id %in% sm_soma_cand, "soma", ifelse(ensembl_gene_id %in% sm_neurite_cand, "neurite", ifelse(ensembl_gene_id %in% controls, "control", "other")))) %>% na.omit 
+GZ_plot %>% ggplot(aes(x = ZBP1_log2LR - GFP_log2LR, y = -log(pvalue.adjust), col = color, alpha = color)) + 
+    geom_point() + 
+    scale_color_manual(values=c("Green", "Blue", "Black", "Red")) + 
+    scale_alpha_manual(values=c(1, 1, 0.1, 1)) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    ylab("-log(FDR)") +
+    geom_text(data = subset(GZ_plot, color != "other"), aes(label = Gene), position = position_jitter(width = .5, height = 1.5)) +
+    theme_cowplot()
+
+ZK_plot <- ZBP1vsKH34 %>% mutate(color = ifelse(ensembl_gene_id %in% sm_soma_cand, "soma", ifelse(ensembl_gene_id %in% sm_neurite_cand, "neurite", ifelse(ensembl_gene_id %in% controls, "control", "other")))) %>% na.omit 
+ZK_plot %>% ggplot(aes(x = ZBP1_log2LR - KH34_log2LR, y = -log(pvalue.adjust), col = color, alpha = color)) + 
+    geom_point() + 
+    scale_color_manual(values=c("Green", "Blue", "Black", "Red")) + 
+    scale_alpha_manual(values=c(1, 1, 0.1, 1)) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    ylab("-log(FDR)") +
+    geom_text(data = subset(ZK_plot, color != "other"), aes(label = Gene), position = position_jitter(width = .5, height = 1.5)) +
+    theme_cowplot()
+
+
+
+TPM_ave %>% filter(GeneID %in% sm_soma_cand | GeneID %in% sm_neurite_cand) %>%  mutate(sm_candidate = ifelse(GeneID %in% sm_soma_cand, "soma", "neurite")) %>% left_join(ZBP1vsKH34, by = c("GeneID" = "ensembl_gene_id")) %>% dplyr::select(GeneID, Gene, sm_candidate, Ave_n_TPM, Ave_s_TPM, log2FC_LR_final, pvalue.adjust) %>% S4Vectors::rename("log2FC_LR_final" = "ZK_FC", "pvalue.adjust" = "ZK_p") %>% left_join(GFPvsZBP1, by = c("GeneID" = "ensembl_gene_id")) %>% dplyr::select(GeneID, Gene.x, sm_candidate, Ave_n_TPM, Ave_s_TPM, ZK_FC, ZK_p, log2FC_LR_final, pvalue.adjust) %>% S4Vectors::rename("Gene.x" = "Gene", "log2FC_LR_final" = "ZG_FC", "pvalue.adjust" = "ZG_p")
+
+```
+
+```{r, making something helpful I hope}
+# GFPvsZBP1 %>% filter(ensembl_gene_id %in% OligoGeneList_trunc) %>% as_tibble() %>% dplyr::select(ensembl_gene_id, Gene, log2FC_LR_final,pvalue_final) %>% dplyr::rename(ZG_LR = log2FC_LR_final, ZG_pval = pvalue_final) %>% left_join(ZBP1vsKH34) %>% dplyr::select(ensembl_gene_id, Gene, ZG_LR, ZG_pval, log2FC_LR_final, pvalue_final) %>% dplyr::rename(ZK_LR = log2FC_LR_final, ZK_pval = pvalue_final) %>% left_join(., GFPvsKH34) %>% dplyr::select(ensembl_gene_id, Gene, ZG_LR, ZG_pval, ZK_LR, ZK_pval, log2FC_LR_final, pvalue_final) %>% dplyr::rename(KG_LR = log2FC_LR_final, KG_pval = pvalue_final) %>% left_join(TPM_ave, by = c("ensembl_gene_id" = "GeneID")) %>% left_join(., regex) -> savethis
+
+#regex <- oligo_gene_seq %>% rowwise() %>%  mutate(sub = list(allsubstr(seq, nchar("ACACCCACACCC"))), min_BAZC = length(agrep("ACACCCACACCC", unlist(sub), max.distance = 2)),  BPZC = str_count(string = seq, pattern = BAZC_BP)) %>% select(ensembl_gene_id, min_BAZC, BPZC)
+
+#rbind(FL_loc_seq, trunc_loc_seq) %>% rbind(., FL_ctrl_seq) %>% rbind(., trunc_ctrl_seq) %>% rbind(., FLvT_loc_seq) %>% rbind(FLvT_ctrl_seq) %>% filter(ensembl_gene_id %in% OligoGeneList_trunc) %>% unique() -> oligo_gene_seq
+
+#saveRDS(savethis, file = "ZBP1_Oligo_gene_list_with_info_no_controls.txt")
+```
+
+```{r, UTRclone candidates}
+#ddr2 iqgap1, myo6, bicd2
+ZCpos <- c("ENSMUSG00000026674", "ENSMUSG00000030536", "ENSMUSG00000033577", "ENSMUSG00000037933")
+#ank2, kctd10, nin, ppp1r9a
+ZCneg <- c("ENSMUSG00000032826", "ENSMUSG00000001098", "ENSMUSG00000021068", "ENSMUSG00000032827 ")
+
+GZ_plot <- GFPvsZBP1 %>% mutate(actbZC = ifelse(ensembl_gene_id %in% ZCpos, "pos", ifelse(ensembl_gene_id %in% ZCneg, "neg", "other"))) %>% na.omit 
+GZ_plot %>% ggplot(aes(x = ZBP1_log2LR - GFP_log2LR, y = -log(pvalue.adjust), col = actbZC, alpha = actbZC)) + 
+    geom_point() + 
+    scale_color_manual(values=c("Blue", "Black", "Red")) + 
+    scale_alpha_manual(values=c(1, 0.1, 1)) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    ylab("-log(FDR)") +
+    geom_text(data = subset(GZ_plot, actbZC != "other"), aes(label = Gene), position = position_jitter(width = .5, height = 1.5)) +
+    theme_cowplot()
+
+ZK_plot <- ZBP1vsKH34 %>% mutate(actbZC = ifelse(ensembl_gene_id %in% ZCpos, "pos", ifelse(ensembl_gene_id %in% ZCneg, "neg", "other"))) %>% na.omit 
+ZK_plot %>% ggplot(aes(x = ZBP1_log2LR - KH34_log2LR, y = -log(pvalue.adjust), col = actbZC, alpha = actbZC)) + 
+    geom_point() + 
+    scale_color_manual(values=c("Blue", "Black", "Red")) + 
+    scale_alpha_manual(values=c(1, 0.1, 1)) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    ylab("-log(FDR)") +
+    geom_text(data = subset(ZK_plot, actbZC != "other"), aes(label = Gene), position = position_jitter(width = .5, height = 1.5)) +
+    theme_cowplot()
+
+```
 
