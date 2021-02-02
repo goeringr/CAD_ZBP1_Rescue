@@ -62,14 +62,16 @@ dat <- t(tpms) %>%
   mutate(sample = colnames(tpms))
 
 dat_all <- dat %>%
-  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), by = "_") %>% 
+  separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), sep = "_") %>% 
   select(treatment, fraction, rep, everything(), -cell, -loxp)
 
 autoplot(prcomp(log(dat_all[4:ncol(dat_all)]+1)), 
          data = dat_all,
          colour = "treatment", 
-         shape = "fraction") +
-  ggtitle("PCA of log(TPMs)")
+         shape = "fraction",
+         size = 5) +
+  ggtitle("PCA of log(TPMs)") +
+  theme_cowplot()
 
 ```
 
@@ -125,8 +127,7 @@ sigChanges <- rownames(AllChanges)[AllChanges$padj < 0.001 & !is.na(AllChanges$p
 sigMat <- rlogMatrix[rownames(rlogMatrix) %in% sigChanges,]
 
 annoDF <- as.data.frame(colData(rlog)[,1,drop=FALSE]) %>%
-  as_tibble() %>% 
-  rownames_to_column() %>% 
+  as_tibble(rownames = "rowname") %>%  
   mutate(sample = str_sub(sample, 10, str_length(sample)-5)) %>%
   as.data.frame()
 rownames(annoDF) <- annoDF$rowname
@@ -144,8 +145,7 @@ pheatmap(sigMat,
 ```{r, LR from norm counts}
 LR_tidy <- norm_counts %>%
   as.data.frame() %>%  
-  as_tibble() %>%
-  rownames_to_column(var = "Gene") %>% 
+  as_tibble(rownames = "Gene") %>%
   mutate(LR_GFP_rep1 = CAD_loxP_GFP_neurite_rep1/CAD_loxP_GFP_soma_rep1, LR_GFP_rep2 = CAD_loxP_GFP_neurite_rep2/CAD_loxP_GFP_soma_rep2, LR_GFP_rep3 = CAD_loxP_GFP_neurite_rep3/CAD_loxP_GFP_soma_rep3, LR_KH34_rep1 = CAD_loxP_KH34_neurite_rep1/CAD_loxP_KH34_soma_rep1, LR_KH34_rep2 = CAD_loxP_KH34_neurite_rep2/CAD_loxP_KH34_soma_rep2, LR_KH34_rep3 = CAD_loxP_KH34_neurite_rep3/CAD_loxP_KH34_soma_rep4, LR_ZBP1_rep1 = CAD_loxP_ZBP1_neurite_rep1/CAD_loxP_ZBP1_soma_rep1, LR_ZBP1_rep2 = CAD_loxP_ZBP1_neurite_rep2/CAD_loxP_ZBP1_soma_rep2, LR_ZBP1_rep3 = CAD_loxP_ZBP1_neurite_rep3/CAD_loxP_ZBP1_soma_rep3) %>% 
   select(Gene, contains("LR"))
 
@@ -214,14 +214,16 @@ tidy_dat <- norm_counts %>%
 tidy_dat %>% filter(gene == "Igf2bp1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "ZBP1") +
   theme_cowplot()
 tidy_dat %>% filter(gene == "Actb") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "Beta Actin") + theme_cowplot()
-tidy_dat %>% filter(gene == "Malat1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "Malat1")
-tidy_dat %>% filter(gene == "Gapdh") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "Gapdh")
-tidy_dat %>% filter(gene == "Tsc1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "ZBP1") +
-+ theme_cowplot()
-tidy_dat %>% filter(gene == "Ranbp1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "ZBP1") +
-+ theme_cowplot()
 
-#saveRDS(tidy_dat, file = "CAD_ZBP1_Rescue_tpms")
+tidy_dat %>% filter(gene == "Malat1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "Malat1") + theme_cowplot()
+
+tidy_dat %>% filter(gene == "Gapdh") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "Gapdh") + theme_cowplot()
+
+tidy_dat %>% filter(gene == "Tsc1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "Tsc1") + theme_cowplot()
+
+tidy_dat %>% filter(gene == "Ranbp1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "Ranbp1") + theme_cowplot()
+
+saveRDS(tidy_dat, file = "CAD_ZBP1_Rescue_tpms")
 saveRDS(txi, file = "CAD_ZBP1_Rescue_txi")
 saveRDS(t2g, file = "t2g")
 ```
@@ -230,18 +232,18 @@ saveRDS(t2g, file = "t2g")
 
 ```{r, }
 LR_tidier <- LR_tidy %>%
-  as_tibble() %>% 
   left_join(t2g[,2:3], by = c("Gene" = "ensembl_gene_id")) %>%
   rename("gene" = ext_gene) %>% 
   unique() %>% 
   gather(key = sample, value = LR, -gene, -Gene) %>%
-  separate(sample, into = c("LRlabel", "treatment", "rep"), by = "_") %>% 
+  separate(sample, into = c("LRlabel", "treatment", "rep"), sep = "_") %>% 
   mutate(LR = as.numeric(LR)) %>% select(gene, treatment, rep, LR)
 
-#LR_tidier %>% filter(gene == "Igf2bp1") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5)) + geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "ZBP1") + guides(col = FALSE, size = FALSE)
-LR_tidier %>% filter(gene == "Actb") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5)) + geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "Beta Actin") + guides(col = FALSE, size = FALSE)
-LR_tidier %>% filter(gene == "Malat1") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5))+ geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "Malat1") + guides(col = FALSE, size = FALSE)
-LR_tidier %>% filter(gene == "Gapdh") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5)) + geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "Gapdh") + guides(col = FALSE, size = FALSE)
+LR_tidier %>% filter(gene == "Igf2bp1") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5)) + geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "ZBP1") + guides(col = FALSE, size = FALSE) + theme_cowplot()
+
+LR_tidier %>% filter(gene == "Actb") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5)) + geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "Beta Actin") + guides(col = FALSE, size = FALSE) + theme_cowplot()
+LR_tidier %>% filter(gene == "Malat1") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5))+ geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "Malat1") + guides(col = FALSE, size = FALSE) + theme_cowplot()
+LR_tidier %>% filter(gene == "Gapdh") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5)) + geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "Gapdh") + guides(col = FALSE, size = FALSE) + theme_cowplot()
 
 saveRDS(LR_tidier, file = "CAD_ZBP1_Rescue_LR")
 ```
@@ -249,9 +251,9 @@ saveRDS(LR_tidier, file = "CAD_ZBP1_Rescue_LR")
 ###comparing the LRs
 
 ```{r, }
-LR_tidier %>% group_by(gene, treatment) %>% summarise(mean = mean(LR)) %>% spread(key = treatment, value = mean) %>% ggplot(aes(x = log2(GFP), y = log2(ZBP1))) + geom_point() + geom_abline(intercept = 0, slope = 1)
-LR_tidier %>% group_by(gene, treatment) %>% summarise(mean = mean(LR)) %>% spread(key = treatment, value = mean) %>% ggplot(aes(x = log2(GFP), y = log2(KH34))) + geom_point() + geom_abline(intercept = 0, slope = 1)
-LR_tidier %>% group_by(gene, treatment) %>% summarise(mean = mean(LR)) %>% spread(key = treatment, value = mean) %>% ggplot(aes(x = log2(ZBP1), y = log2(KH34))) + geom_point() + geom_abline(intercept = 0, slope = 1)
+LR_tidier %>% group_by(gene, treatment) %>% summarise(mean = mean(LR)) %>% spread(key = treatment, value = mean) %>% ggplot(aes(x = log2(GFP), y = log2(ZBP1))) + geom_point() + geom_abline(intercept = 0, slope = 1) + theme_cowplot()
+LR_tidier %>% group_by(gene, treatment) %>% summarise(mean = mean(LR)) %>% spread(key = treatment, value = mean) %>% ggplot(aes(x = log2(GFP), y = log2(KH34))) + geom_point() + geom_abline(intercept = 0, slope = 1) + theme_cowplot()
+LR_tidier %>% group_by(gene, treatment) %>% summarise(mean = mean(LR)) %>% spread(key = treatment, value = mean) %>% ggplot(aes(x = log2(ZBP1), y = log2(KH34))) + geom_point() + geom_abline(intercept = 0, slope = 1) + theme_cowplot()
 
 ```
 
@@ -263,7 +265,7 @@ seq_run <- c("1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "2", "1", "1
 type <- c("paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end","paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end")
 colData <- data.frame("sample" = samples, "Conditions" = conditions, "seq_run" = seq_run, "Type" = type)
 
-dds_qc <- DESeqDataSetFromTximport(txi, colData = colData, design = ~Conditions + seq_run)
+dds_qc <- DESeqDataSetFromTximport(txi, colData = colData, design = ~seq_run + Conditions)
 dds_qc <- DESeq(dds_qc)
 res <- results(dds_qc)
 
@@ -273,8 +275,7 @@ res <- results(dds_qc)
 
 ```{r, }
 simpleres <- res %>%
-  as_tibble() %>%
-  rownames_to_column(var = "ensembl_gene_id") %>%
+  as_tibble(rownames = "ensembl_gene_id") %>%
   select(ensembl_gene_id, log2FoldChange) %>% 
   mutate(GO = "All Genes")
 
@@ -306,7 +307,8 @@ rbind(simpleres,RPgenes,ETCgenes,nucleargenes) %>%
     coord_cartesian(ylim = c(-5,7)) + 
     guides(fill = FALSE) +
     ylab("log2(Localization Ratio)") +
-    guides(fill = FALSE)
+    guides(fill = FALSE) +
+    theme_cowplot()
 
 
 

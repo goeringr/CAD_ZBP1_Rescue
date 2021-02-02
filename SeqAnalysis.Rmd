@@ -1,0 +1,483 @@
+---
+title: "SeqAnalysis"
+output: html_document
+---
+
+```{r, setup}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(Biostrings)
+library(cowplot)
+library(ggpubr)
+
+```
+
+```{r, functions}
+
+kmer_compare <- function(caseDNAStringSet, ctrlDNAStringSet, k){
+    
+   if(any(names(caseDNAStringSet) %in% names(ctrlDNAStringSet))){
+     warning("some sequences in case set are also in the control set. This is not recommended.")
+   }
+  
+   print("counting kmers...", quote = FALSE)
+   case_kmer <- oligonucleotideFrequency(caseDNAStringSet, width = k) %>% colSums() %>% data.frame(kmer = names(.), case = .) %>% as_tibble()
+   ctrl_kmer <- oligonucleotideFrequency(ctrlDNAStringSet, width = k) %>% colSums() %>% data.frame(kmer = names(.), ctrl = .) %>% as_tibble()
+   print("counting complete.", quote= FALSE)
+
+  #compare kmers between case and ctrl takes ~30s
+  
+  fisher <- function(a, b, c, d){
+  mat <- matrix(c(a, b, c, d), nr = 2)
+  fisher.test(mat, alternative = "two.sided")$p.value
+  } 
+    
+  print("calculating kmer statistics...", print = FALSE)
+  
+  kmer_stats <- left_join(ctrl_kmer, case_kmer) %>% 
+    na.omit() %>% 
+    mutate(case_freq = case / sum(case),
+           ctrl_freq = ctrl / sum(ctrl), 
+           log2FC = log2(case_freq/ctrl_freq),
+           case_tot = sum(case)-case,
+           ctrl_tot = sum(ctrl)-ctrl) %>% 
+    rowwise() %>% 
+    mutate(pval = fisher(case, ctrl, case_tot, ctrl_tot),
+           p_adj = p.adjust(pval, method = "BH", 4^k)) %>% 
+    dplyr::select(kmer, ctrl_freq, case_freq, log2FC, pval, p_adj) 
+  
+  print("calculations complete.", quote = FALSE)
+  
+  kmer_stats
+}
+
+cisBPRNA_compare <- function(motif_path, RBPinfo, caseDNAStringset, ctrlDNAStringSet){
+  
+  #get paths to each motif pwm
+  
+  motif_paths <- list.files(path = motif_path, full.names = TRUE)
+  motif_info <- file.info(motif_paths)
+  motif_info <- motif_info[motif_info$size != 0, ]
+  motifs <- motif_info %>% 
+    as_tibble(rownames = "PATH") %>% 
+    mutate(motif = str_match(PATH, "motifs/(.*?).txt")[,2]) %>% 
+    dplyr::select(PATH, motif)
+
+  #merge motif paths with RBP info
+  
+  RBP_info <- read.table(RBPinfo, header = TRUE, sep = "\t")
+  RBP_info <- RBP_info %>% 
+    as_tibble() %>% 
+    dplyr::select(Motif_ID, RBP_Name) %>% 
+    filter(Motif_ID != ".") %>% 
+    group_by(Motif_ID) %>%
+    summarise(RBP_name = dplyr::first(RBP_Name))
+
+  motifs <- left_join(motifs, RBP_info, by = c("motif" = "Motif_ID"))
+
+  fisher <- function(a, b, c, d){
+  mat <- matrix(c(a, b, c, d), nr = 2)
+  fisher.test(mat, alternative = "two.sided")$p.value
+  }
+
+  motifs <- motifs %>%
+    mutate(PWM = lapply(PATH, function(x) t(read.table(x, header = TRUE, row.names = 1, col.names = c("pos", "A", "C", "G", "T")))), 
+           case = unlist(lapply(PWM, function(x) lapply(caseDNAStringset, function(y) countPWM(x, y)) %>% unlist() %>% sum())), 
+           ctrl = unlist(lapply(PWM, function(x) lapply(ctrlDNAStringSet, function(y) countPWM(x, y)) %>% unlist() %>% sum())), 
+           case_freq = case / sum(width(caseDNAStringset)), 
+           ctrl_freq = ctrl / sum(width(ctrlDNAStringSet)), 
+           log2FC = log2(case_freq/ctrl_freq),
+           case_tot = sum(case)-case,
+           ctrl_tot = sum(ctrl)-ctrl) %>% 
+    rowwise() %>% 
+    mutate(pval = fisher(case, ctrl, case_tot, ctrl_tot),
+             p_adj = p.adjust(pval, method = "BH", nrow(motifs))) %>% 
+      dplyr::select(motif, RBP_name, ctrl_freq, case_freq, log2FC, pval, p_adj)
+
+}
+
+GC_compare <- function(caseDNAStringSet, ctrlDNAStringSet){
+  
+  if(any(names(caseDNAStringSet) %in% names(ctrlDNAStringSet))){
+  warning("some sequences in case set are also in the control set. This is not recommended.")
+  }
+  
+  GC_case <- letterFrequency(caseDNAStringSet, "GC") / width(caseDNAStringSet)
+  GC_ctrl <- letterFrequency(ctrlDNAStringSet, "GC") / width(ctrlDNAStringSet)
+  wilcox.p <- wilcox.test(GC_case, GC_ctrl)$p.value
+  mean_case <- mean(GC_case)
+  mean_ctrl <- mean(GC_ctrl)
+  mean_FC <- mean_case/mean_ctrl
+  CliffDelta <- effsize::cliff.delta(GC_case, GC_ctrl)$estimate
+  lowerCD <- effsize::cliff.delta(GC_case, GC_ctrl)$conf.int[1]
+  upperCD <- effsize::cliff.delta(GC_case, GC_ctrl)$conf.int[2]
+  
+  data.frame(wilcox.p, mean_case, mean_ctrl, mean_FC, CliffDelta, lowerCD, upperCD)
+}
+
+length_compare <- function(caseDNAStringSet, ctrlDNAStringSet){
+  
+  if(any(names(caseDNAStringSet) %in% names(ctrlDNAStringSet))){
+     warning("some sequences in case set are also in the control set. This is not recommended.")
+  }
+  
+  wilcox.p <- wilcox.test(width(caseDNAStringSet), width(ctrlDNAStringSet))$p.value
+  mean_case <- mean(width(caseDNAStringSet))
+  mean_ctrl <- mean(width(ctrlDNAStringSet))
+  mean_FC <- mean_case/mean_ctrl
+  CliffDelta <- effsize::cliff.delta(width(caseDNAStringSet), width(ctrlDNAStringSet))$estimate
+  lowerCD <- effsize::cliff.delta(width(caseDNAStringSet), width(ctrlDNAStringSet))$conf.int[1]
+  upperCD <- effsize::cliff.delta(width(caseDNAStringSet), width(ctrlDNAStringSet))$conf.int[2]
+  
+  data.frame(wilcox.p, mean_case, mean_ctrl, mean_FC, CliffDelta, lowerCD, upperCD)
+  
+}
+
+
+```
+
+
+```{r, ZBP1dat}
+##just trying this out with some real data
+#FL_genes <- readRDS("data/ZBP1dat/FLlocgenes05.txt")
+#FL_ctrl_genes <- readRDS("data/ZBP1dat/FLctrlgenes.txt")
+#FL_ctrl_genes <- anti_join(FL_ctrl_genes, FL_genes)
+#FLvT_genes <- readRDS("data/ZBP1dat/FLvstrunclocgenes05")
+#FLvT_ctrl_genes <- readRDS("data/ZBP1dat/FLversustruncctrlgenes.txt")
+#FLvT_ctrl_genes <- anti_join(FLvT_ctrl_genes, FLvT_genes)
+
+#longest_3UTR_FL_Tx <- gene2longestTx(longest_mm, pull(FL_genes, ensembl_gene_id), "UTR3")
+#longest_3UTR_FL_ctrl_Tx <- gene2longestTx(longest_mm, pull(FL_ctrl_genes, ensembl_gene_id), "UTR3")
+#longest_3UTR_FLvT_Tx <- gene2longestTx(longest_mm, pull(FLvT_genes, ensembl_gene_id), "UTR3")
+#longest_3UTR_FLvT_ctrl_Tx <- gene2longestTx(longest_mm, pull(FLvT_ctrl_genes, ensembl_gene_id), "UTR3")
+#getTxOut(mm_f_gff, longest_3UTR_FL_Tx, "UTR3", "data/ZBP1dat/longest_3UTR_FL", "fa")
+#getTxOut(mm_f_gff, longest_3UTR_FL_ctrl_Tx, "UTR3", "data/ZBP1dat/longest_3UTR_FL_ctrl", "fa")
+#getTxOut(mm_f_gff, longest_3UTR_FLvT_Tx, "UTR3", "data/ZBP1dat/longest_3UTR_FLvT", "fa")
+#getTxOut(mm_f_gff, longest_3UTR_FLvT_ctrl_Tx, "UTR3", "data/ZBP1dat/longest_3UTR_FLvt_ctrl", "fa")
+
+#longest_5UTR_FL_Tx <- gene2longestTx(longest_mm, pull(FL_genes, ensembl_gene_id), "UTR5")
+#longest_5UTR_FL_ctrl_Tx <- gene2longestTx(longest_mm, pull(FL_ctrl_genes, ensembl_gene_id), "UTR5")
+#longest_5UTR_FLvT_Tx <- gene2longestTx(longest_mm, pull(FLvT_genes, ensembl_gene_id), "UTR5")
+#longest_5UTR_FLvT_ctrl_Tx <- gene2longestTx(longest_mm, pull(FLvT_ctrl_genes, ensembl_gene_id), "UTR5")
+#getTxOut(mm_f_gff, longest_5UTR_FL_Tx, "UTR5", "data/ZBP1dat/longest_5UTR_FL", "fa")
+#getTxOut(mm_f_gff, longest_5UTR_FL_ctrl_Tx, "UTR5", "data/ZBP1dat/longest_5UTR_FL_ctrl", "fa")
+#getTxOut(mm_f_gff, longest_5UTR_FLvT_Tx, "UTR5", "data/ZBP1dat/longest_5UTR_FLvT", "fa")
+#getTxOut(mm_f_gff, longest_5UTR_FLvT_ctrl_Tx, "UTR5", "data/ZBP1dat/longest_5UTR_FLvt_ctrl", "fa")
+
+#longest_CDS_FL_Tx <- gene2longestTx(longest_mm, pull(FL_genes, ensembl_gene_id), "CDS")
+#longest_CDS_FL_ctrl_Tx <- gene2longestTx(longest_mm, pull(FL_ctrl_genes, ensembl_gene_id), "CDS")
+#longest_CDS_FLvT_Tx <- gene2longestTx(longest_mm, pull(FLvT_genes, ensembl_gene_id), "CDS")
+#longest_CDS_FLvT_ctrl_Tx <- gene2longestTx(longest_mm, pull(FLvT_ctrl_genes, ensembl_gene_id), "CDS")
+#getTxOut(mm_f_gff, longest_CDS_FL_Tx, "CDS", "data/ZBP1dat/longest_CDS_FL", "fa")
+#getTxOut(mm_f_gff, longest_CDS_FL_ctrl_Tx, "CDS", "data/ZBP1dat/longest_CDS_FL_ctrl", "fa")
+#getTxOut(mm_f_gff, longest_CDS_FLvT_Tx, "CDS", "data/ZBP1dat/longest_CDS_FLvT", "fa")
+#getTxOut(mm_f_gff, longest_CDS_FLvT_ctrl_Tx, "CDS", "data/ZBP1dat/longest_CDS_FLvt_ctrl", "fa")
+
+#longest_whole_FL_Tx <- gene2longestTx(longest_mm, pull(FL_genes, ensembl_gene_id), "whole")
+#longest_whole_FL_ctrl_Tx <- gene2longestTx(longest_mm, pull(FL_ctrl_genes, ensembl_gene_id), "whole")
+#longest_whole_FLvT_Tx <- gene2longestTx(longest_mm, pull(FLvT_genes, ensembl_gene_id), "whole")
+#longest_whole_FLvT_ctrl_Tx <- gene2longestTx(longest_mm, pull(FLvT_ctrl_genes, ensembl_gene_id), "whole")
+#getTxOut(mm_f_gff, longest_whole_FL_Tx, "whole", "data/ZBP1dat/longest_whole_FL", "fa")
+#getTxOut(mm_f_gff, longest_whole_FL_ctrl_Tx, "whole", "data/ZBP1dat/longest_whole_FL_ctrl", "fa")
+#getTxOut(mm_f_gff, longest_whole_FLvT_Tx, "whole", "data/ZBP1dat/longest_whole_FLvT", "fa")
+#getTxOut(mm_f_gff, longest_whole_FLvT_ctrl_Tx, "whole", "data/ZBP1dat/longest_whole_FLvt_ctrl", "fa")
+
+
+#FL_genes_RET <- read.table("file:///C:/Users/rgoer/Documents/CAD_ZBP1_Rescue_quants/FLvRetgenes05.txt")
+#FL_ctrl_genes_RET <- read.table("file:///C:/Users/rgoer/Documents/CAD_ZBP1_Rescue_quants/FLvRetctrlgenes05.txt")
+#FLvT_genes_RET <- read.table("file:///C:/Users/rgoer/Documents/CAD_ZBP1_Rescue_quants/FLvTRetgenes05.txt")
+#FLvT_ctrl_genes_RET <- read.table("file:///C:/Users/rgoer/Documents/CAD_ZBP1_Rescue_quants/FLvTRetctrlgenes05.txt")
+
+#longest_3UTR_FL_Tx <- gene2longestTx(longest_mm, pull(FL_genes_RET, ensembl_gene_id), "UTR3")
+#longest_3UTR_FL_ctrl_Tx <- gene2longestTx(longest_mm, pull(FL_ctrl_genes_RET, x), "UTR3")
+#longest_3UTR_FLvT_Tx <- gene2longestTx(longest_mm, pull(FLvT_genes_RET, ensembl_gene_id), "UTR3")
+#longest_3UTR_FLvT_ctrl_Tx <- gene2longestTx(longest_mm, pull(FLvT_ctrl_genes_RET, x), "UTR3")
+#getTxOut(mm_f_gff, longest_3UTR_FL_Tx, "UTR3", "data/ZBP1dat/longest_3UTR_FL_RET", "fa")
+#getTxOut(mm_f_gff, longest_3UTR_FL_ctrl_Tx, "UTR3", "data/ZBP1dat/longest_3UTR_FL_ctrl_RET", "fa")
+#getTxOut(mm_f_gff, longest_3UTR_FLvT_Tx, "UTR3", "data/ZBP1dat/longest_3UTR_FLvT_RET", "fa")
+#getTxOut(mm_f_gff, longest_3UTR_FLvT_ctrl_Tx, "UTR3", "data/ZBP1dat/longest_3UTR_FLvt_ctrl_RET", "fa")
+
+#longest_5UTR_FL_Tx <- gene2longestTx(longest_mm, pull(FL_genes_RET, ensembl_gene_id), "UTR5")
+#longest_5UTR_FL_ctrl_Tx <- gene2longestTx(longest_mm, pull(FL_ctrl_genes_RET, x), "UTR5")
+#longest_5UTR_FLvT_Tx <- gene2longestTx(longest_mm, pull(FLvT_genes_RET, ensembl_gene_id), "UTR5")
+#longest_5UTR_FLvT_ctrl_Tx <- gene2longestTx(longest_mm, pull(FLvT_ctrl_genes_RET, x), "UTR5")
+#getTxOut(mm_f_gff, longest_5UTR_FL_Tx, "UTR5", "data/ZBP1dat/longest_5UTR_FL_RET", "fa")
+#getTxOut(mm_f_gff, longest_5UTR_FL_ctrl_Tx, "UTR5", "data/ZBP1dat/longest_5UTR_FL_ctrl_RET", "fa")
+#getTxOut(mm_f_gff, longest_5UTR_FLvT_Tx, "UTR5", "data/ZBP1dat/longest_5UTR_FLvT_RET", "fa")
+#getTxOut(mm_f_gff, longest_5UTR_FLvT_ctrl_Tx, "UTR5", "data/ZBP1dat/longest_5UTR_FLvt_ctrl_RET", "fa")
+
+#longest_CDS_FL_Tx <- gene2longestTx(longest_mm, pull(FL_genes_RET, ensembl_gene_id), "CDS")
+#longest_CDS_FL_ctrl_Tx <- gene2longestTx(longest_mm, pull(FL_ctrl_genes_RET, x), "CDS")
+#longest_CDS_FLvT_Tx <- gene2longestTx(longest_mm, pull(FLvT_genes_RET, ensembl_gene_id), "CDS")
+#longest_CDS_FLvT_ctrl_Tx <- gene2longestTx(longest_mm, pull(FLvT_ctrl_genes_RET, x), "CDS")
+#getTxOut(mm_f_gff, longest_CDS_FL_Tx, "CDS", "data/ZBP1dat/longest_CDS_FL_RET", "fa")
+#getTxOut(mm_f_gff, longest_CDS_FL_ctrl_Tx, "CDS", "data/ZBP1dat/longest_CDS_FL_ctrl_RET", "fa")
+#getTxOut(mm_f_gff, longest_CDS_FLvT_Tx, "CDS", "data/ZBP1dat/longest_CDS_FLvT_RET", "fa")
+#getTxOut(mm_f_gff, longest_CDS_FLvT_ctrl_Tx, "CDS", "data/ZBP1dat/longest_CDS_FLvt_ctrl_RET", "fa")
+
+#longest_whole_FL_Tx <- gene2longestTx(longest_mm, pull(FL_genes_RET, ensembl_gene_id), "whole")
+#longest_whole_FL_ctrl_Tx <- gene2longestTx(longest_mm, pull(FL_ctrl_genes_RET, x), "whole")
+#longest_whole_FLvT_Tx <- gene2longestTx(longest_mm, pull(FLvT_genes_RET, ensembl_gene_id), "whole")
+#longest_whole_FLvT_ctrl_Tx <- gene2longestTx(longest_mm, pull(FLvT_ctrl_genes_RET, x), "whole")
+#getTxOut(mm_f_gff, longest_whole_FL_Tx, "whole", "data/ZBP1dat/longest_whole_FL_RET", "fa")
+#getTxOut(mm_f_gff, longest_whole_FL_ctrl_Tx, "whole", "data/ZBP1dat/longest_whole_FL_ctrl_RET", "fa")
+#getTxOut(mm_f_gff, longest_whole_FLvT_Tx, "whole", "data/ZBP1dat/longest_whole_FLvT_RET", "fa")
+#getTxOut(mm_f_gff, longest_whole_FLvT_ctrl_Tx, "whole", "data/ZBP1dat/longest_whole_FLvt_ctrl_RET", "fa")
+```
+
+```{r, read in test dat}
+
+longest_3UTR_FL_loc <- readDNAStringSet("longestFA/longest_3UTR_FL.fa")
+longest_3UTR_FL_loc_ctrl <- readDNAStringSet("longestFA/longest_3UTR_FL_ctrl.fa")
+longest_3UTR_FL_ret_ctrl <- readDNAStringSet("longestFA/longest_3UTR_FL_ctrl_RET.fa")
+longest_3UTR_FL_ret <- readDNAStringSet("longestFA/longest_3UTR_FL_RET.fa")
+longest_3UTR_FLvT_loc <- readDNAStringSet("longestFA/longest_3UTR_FLvT.fa")
+longest_3UTR_FLvT_loc_ctrl <- readDNAStringSet("longestFA/longest_3UTR_FLvt_ctrl.fa")
+longest_3UTR_FLvT_ret_ctrl <- readDNAStringSet("longestFA/longest_3UTR_FLvt_ctrl_RET.fa")
+longest_3UTR_FLvT_ret <- readDNAStringSet("longestFA/longest_3UTR_FLvT_RET.fa")
+longest_5UTR_FL_loc <- readDNAStringSet("longestFA/longest_5UTR_FL.fa")
+longest_5UTR_FL_loc_ctrl <- readDNAStringSet("longestFA/longest_5UTR_FL_ctrl.fa")
+longest_5UTR_FL_ret_ctrl <- readDNAStringSet("longestFA/longest_5UTR_FL_ctrl_RET.fa")
+longest_5UTR_FL_ret <- readDNAStringSet("longestFA/longest_5UTR_FL_RET.fa")
+longest_5UTR_FLvT_loc <- readDNAStringSet("longestFA/longest_5UTR_FLvT.fa")
+longest_5UTR_FLvT_loc_ctrl <- readDNAStringSet("longestFA/longest_5UTR_FLvt_ctrl.fa")
+longest_5UTR_FLvT_ret_ctrl <- readDNAStringSet("longestFA/longest_5UTR_FLvt_ctrl_RET.fa")
+longest_5UTR_FLvT_ret <- readDNAStringSet("longestFA/longest_5UTR_FLvT_RET.fa")
+longest_CDS_FL_loc <- readDNAStringSet("longestFA/longest_CDS_FL.fa")
+longest_CDS_FL_loc_ctrl <- readDNAStringSet("longestFA/longest_CDS_FL_ctrl.fa")
+longest_CDS_FL_ret_ctrl <- readDNAStringSet("longestFA/longest_CDS_FL_ctrl_RET.fa")
+longest_CDS_FL_ret <- readDNAStringSet("longestFA/longest_CDS_FL_RET.fa")
+longest_CDS_FLvT_loc <- readDNAStringSet("longestFA/longest_CDS_FLvT.fa")
+longest_CDS_FLvT_loc_ctrl <- readDNAStringSet("longestFA/longest_CDS_FLvt_ctrl.fa")
+longest_CDS_FLvT_ret_ctrl <- readDNAStringSet("longestFA/longest_CDS_FLvt_ctrl_RET.fa")
+longest_CDS_FLvT_ret <- readDNAStringSet("longestFA/longest_CDS_FLvT_RET.fa")
+longest_whole_FL_loc <- readDNAStringSet("longestFA/longest_whole_FL.fa")
+longest_whole_FL_loc_ctrl <- readDNAStringSet("longestFA/longest_whole_FL_ctrl.fa")
+longest_whole_FL_ret_ctrl <- readDNAStringSet("longestFA/longest_whole_FL_ctrl_RET.fa")
+longest_whole_FL_ret <- readDNAStringSet("longestFA/longest_whole_FL_RET.fa")
+longest_whole_FLvT_loc <- readDNAStringSet("longestFA/longest_whole_FLvT.fa")
+longest_whole_FLvT_loc_ctrl <- readDNAStringSet("longestFA/longest_whole_FLvt_ctrl.fa")
+longest_whole_FLvT_ret_ctrl <- readDNAStringSet("longestFA/longest_whole_FLvt_ctrl_RET.fa")
+longest_whole_FLvT_ret <- readDNAStringSet("longestFA/longest_whole_FLvT_RET.fa")
+
+'%!in%' <- Negate('%in%')
+
+longest_3UTR_FL_loc_ctrl <- longest_3UTR_FL_loc_ctrl[names(longest_3UTR_FL_loc_ctrl) %!in% names(longest_3UTR_FL_loc)]
+longest_3UTR_FLvT_loc_ctrl <- longest_3UTR_FLvT_loc_ctrl[names(longest_3UTR_FLvT_loc_ctrl) %!in% names(longest_3UTR_FLvT_loc)]
+longest_3UTR_FL_ret_ctrl <- longest_3UTR_FL_ret_ctrl[names(longest_3UTR_FL_ret_ctrl) %!in% names(longest_3UTR_FL_ret)]
+longest_3UTR_FLvT_ret_ctrl <- longest_3UTR_FLvT_ret_ctrl[names(longest_3UTR_FLvT_ret_ctrl) %!in% names(longest_3UTR_FLvT_ret)]
+longest_5UTR_FL_loc_ctrl <- longest_5UTR_FL_loc_ctrl[names(longest_5UTR_FL_loc_ctrl) %!in% names(longest_5UTR_FL_loc)]
+longest_5UTR_FLvT_loc_ctrl <- longest_5UTR_FLvT_loc_ctrl[names(longest_5UTR_FLvT_loc_ctrl) %!in% names(longest_5UTR_FLvT_loc)]
+longest_5UTR_FL_ret_ctrl <- longest_5UTR_FL_ret_ctrl[names(longest_5UTR_FL_ret_ctrl) %!in% names(longest_5UTR_FL_ret)]
+longest_5UTR_FLvT_ret_ctrl <- longest_5UTR_FLvT_ret_ctrl[names(longest_5UTR_FLvT_ret_ctrl) %!in% names(longest_5UTR_FLvT_ret)]
+longest_CDS_FL_loc_ctrl <- longest_CDS_FL_loc_ctrl[names(longest_CDS_FL_loc_ctrl) %!in% names(longest_CDS_FL_loc)]
+longest_CDS_FLvT_loc_ctrl <- longest_CDS_FLvT_loc_ctrl[names(longest_CDS_FLvT_loc_ctrl) %!in% names(longest_CDS_FLvT_loc)]
+longest_CDS_FL_ret_ctrl <- longest_CDS_FL_ret_ctrl[names(longest_CDS_FL_ret_ctrl) %!in% names(longest_CDS_FL_ret)]
+longest_CDS_FLvT_ret_ctrl <- longest_CDS_FLvT_ret_ctrl[names(longest_CDS_FLvT_ret_ctrl) %!in% names(longest_CDS_FLvT_ret)]
+longest_whole_FL_loc_ctrl <- longest_whole_FL_loc_ctrl[names(longest_whole_FL_loc_ctrl) %!in% names(longest_whole_FL_loc)]
+longest_whole_FLvT_loc_ctrl <- longest_whole_FLvT_loc_ctrl[names(longest_whole_FLvT_loc_ctrl) %!in% names(longest_whole_FLvT_loc)]
+longest_whole_FL_ret_ctrl <- longest_whole_FL_ret_ctrl[names(longest_whole_FL_ret_ctrl) %!in% names(longest_whole_FL_ret)]
+longest_whole_FLvT_ret_ctrl <- longest_whole_FLvT_ret_ctrl[names(longest_whole_FLvT_ret_ctrl) %!in% names(longest_whole_FLvT_ret)]
+
+case_dat <- lst(longest_3UTR_FL_loc, longest_3UTR_FLvT_loc, longest_3UTR_FL_ret, longest_3UTR_FLvT_ret, longest_5UTR_FL_loc, longest_5UTR_FLvT_loc, longest_5UTR_FL_ret, longest_5UTR_FLvT_ret, longest_CDS_FL_loc, longest_CDS_FLvT_loc, longest_CDS_FL_ret, longest_CDS_FLvT_ret, longest_whole_FL_loc, longest_whole_FLvT_loc, longest_whole_FL_ret, longest_whole_FLvT_ret)
+ctrl_dat <- lst(longest_3UTR_FL_loc_ctrl, longest_3UTR_FLvT_loc_ctrl, longest_3UTR_FL_ret_ctrl, longest_3UTR_FLvT_ret_ctrl, longest_5UTR_FL_loc_ctrl, longest_5UTR_FLvT_loc_ctrl, longest_5UTR_FL_ret_ctrl, longest_5UTR_FLvT_ret_ctrl, longest_CDS_FL_loc_ctrl, longest_CDS_FLvT_loc_ctrl, longest_CDS_FL_ret_ctrl, longest_CDS_FLvT_ret_ctrl, longest_whole_FL_loc_ctrl, longest_whole_FLvT_loc_ctrl, longest_whole_FL_ret_ctrl, longest_whole_FLvT_ret_ctrl)
+
+
+```
+
+```{r, }
+
+x <- c(1:16)
+#all_kmer <- lapply(x, function(x) assign(paste(names(case_dat)[x], "_kmer", sep = ""), kmer_compare(case_dat[[x]], ctrl_dat[[x]], 6)))
+#names(all_kmer) <- lapply(x, function(x) paste(names(case_dat)[x], "_kmer", sep = ""))
+#saveRDS(all_kmer, "ZBP1seqkmercounts.txt")
+all_kmer <- readRDS("ZBP1seqkmercounts.txt")
+
+all_GC <- lapply(x, function(x)  GC_compare(case_dat[[x]], ctrl_dat[[x]]))
+names(all_GC) <- lapply(x, function(x) paste(names(case_dat)[x], "_GC", sep = ""))
+
+all_length <- lapply(x, function(x)  length_compare(case_dat[[x]], ctrl_dat[[x]]))
+names(all_length) <- lapply(x, function(x) paste(names(case_dat)[x], "_length", sep = ""))
+
+
+#all_motif <- lapply(x, function(x) cisBPRNA_compare("pwms_all_motifs", "RBP_Information_all_motifs.txt", case_dat[[x]], ctrl_dat[[x]]))
+#names(all_motif) <- lapply(x, function(x) paste(names(case_dat)[x], "_motif", sep = ""))
+#saveRDS(all_motif, "ZBP1seqmotifcounts.txt")
+all_motif <- readRDS("ZBP1seqmotifcounts.txt")
+
+```
+
+```{r, }
+bind_rows(all_GC, .id = "seqs") %>% separate(seqs, into = c("longest", "feature", "construct", "loc", "GC"), sep = "_") %>% ggplot(aes(x = feature, y = CliffDelta, fill = -log(wilcox.p))) + geom_bar(stat = "identity") + theme_cowplot() + facet_grid(construct~loc) + scale_fill_gradient(name = "pval", trans = "log", low = "grey", high = "red", limits = c(3, 78)) + scale_x_discrete(limits=c("whole", "5UTR", "CDS", "3UTR")) + labs(title = "GC content")
+
+bind_rows(all_length, .id = "seqs") %>% separate(seqs, into = c("longest", "feature", "construct", "loc", "length"), sep = "_") %>% ggplot(aes(x = feature, y = CliffDelta, fill = -log(wilcox.p))) + geom_bar(stat = "identity") + theme_cowplot() + facet_grid(construct~loc) + scale_fill_gradient(name = "pval", trans = "log", low = "grey", high = "red", limits = c(3,74)) + scale_x_discrete(limits=c("whole", "5UTR", "CDS", "3UTR")) + labs(title = "length")
+```
+
+```{r, }
+GC_whole_FLvT_loc <- as_tibble(letterFrequency(longest_whole_FLvT_loc, "GC") / width(longest_whole_FLvT_loc)) %>% mutate(sample = "loc") %>% dplyr::rename(GC = 'G|C')
+GC_whole_FLvT_loc_ctrl <- as_tibble(letterFrequency(longest_whole_FLvT_loc_ctrl, "GC") / width(longest_whole_FLvT_loc_ctrl)) %>% mutate(sample = "loc_ctrl") %>% dplyr::rename(GC = 'G|C')
+
+GC_whole_FLvT_ret <- as_tibble(letterFrequency(longest_whole_FLvT_ret, "GC") / width(longest_whole_FLvT_ret)) %>% mutate(sample = "ret") %>% dplyr::rename(GC = 'G|C')
+GC_whole_FLvT_ret_ctrl <- as_tibble(letterFrequency(longest_whole_FLvT_ret_ctrl, "GC") / width(longest_whole_FLvT_ret_ctrl)) %>% mutate(sample = "ret_ctrl") %>% dplyr::rename(GC = 'G|C')
+
+loc_ret_GC<- rbind(GC_whole_FLvT_loc, GC_whole_FLvT_loc_ctrl) %>% rbind(., GC_whole_FLvT_ret) %>% rbind(., GC_whole_FLvT_ret_ctrl)
+
+my_comparisons <- list(c("loc", "loc_ctrl"),
+                    c("ret", "ret_ctrl"))
+
+loc_ret_GC %>% ggplot(aes(x = sample, y = GC, fill = sample, alpha = 0.5)) + geom_violin() + geom_boxplot(width = 0.25, alpha = 0.5) + theme_cowplot() + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", ) + geom_hline(yintercept = 0.5) + guides(fill = FALSE, alpha = FALSE, col = FALSE) + labs(x = "", title = "whole transcript, FLvT genes") + scale_fill_manual(values = c("#478BE7", "#44C4AA", "#F96400", "#FAC70A"))
+
+```
+
+```{r, }
+tpms <- readRDS("ZBP1CADtpms.txt")
+t2g <- readRDS("t2g")
+TPM_ave <- tpms %>% as_tibble(rownames = "GeneID") %>% gather(-GeneID, key = sample, value = TPM) %>% separate(sample, into = c("cell", "lox", "rescue","compartment","rep")) %>% filter(compartment == "soma") %>% group_by(GeneID) %>% summarise(ave = mean(TPM)) 
+
+TPM_compare <- function(TPM, caseDNAStringSet, ctrlDNAStringSet){
+  #t2g <- readRDS(file = "t2g.txt")
+  if(any(names(caseDNAStringSet) %in% names(ctrlDNAStringSet))){
+     warning("some sequences in case set are also in the control set. This is not recommended.")
+  }
+  case_gene <- t2g %>% as_tibble() %>% filter(target_id %in% substr(names(caseDNAStringSet), 1, 18)) %>% pull(., ensembl_gene_id)
+  ctrl_gene <- t2g %>% as_tibble() %>% filter(target_id %in% substr(names(ctrlDNAStringSet), 1, 18)) %>% pull(., ensembl_gene_id)
+  
+  case_TPM <- TPM %>% filter(GeneID %in% case_gene) %>% pull(., ave)
+  ctrl_TPM <- TPM %>% filter(GeneID %in% ctrl_gene) %>% pull(., ave)
+  
+  wilcox.p <- wilcox.test(case_TPM, ctrl_TPM)$p.value
+  mean_case <- mean(case_TPM)
+  mean_ctrl <- mean(ctrl_TPM)
+  mean_FC <- mean_case/mean_ctrl
+  CliffDelta <- effsize::cliff.delta(case_TPM, ctrl_TPM)$estimate
+  lowerCD <- effsize::cliff.delta(case_TPM, ctrl_TPM)$conf.int[1]
+  upperCD <- effsize::cliff.delta(case_TPM, ctrl_TPM)$conf.int[2]
+  
+  data.frame(wilcox.p, mean_case, mean_ctrl, mean_FC, CliffDelta, lowerCD, upperCD)
+  
+}
+
+all_TPM <- lapply(x, function(x)  TPM_compare(TPM_ave, case_dat[[x]], ctrl_dat[[x]]))
+names(all_TPM) <- lapply(x, function(x) paste(names(case_dat)[x], "_TPM", sep = ""))
+
+bind_rows(all_TPM, .id = "seqs") %>% separate(seqs, into = c("longest", "feature", "construct", "loc", "TPM"), sep = "_") %>% ggplot(aes(x = feature, y = CliffDelta, fill = -log(wilcox.p))) + geom_bar(stat = "identity") + theme_cowplot() + facet_grid(construct~loc) + scale_fill_gradient(name = "pval", trans = "log", low = "grey", high = "red", limits = c(3, 7)) + scale_x_discrete(limits=c("whole", "5UTR", "CDS", "3UTR")) + labs(title = "Expression (TPM)")
+
+```
+
+```{r, plot}
+kmer_plot <- function(x){
+  p <- all_kmer[[x]] %>% mutate(sig = ifelse(p_adj < 0.01, "0.01", "ns"))
+  p %>% ggplot(aes(x = log2FC, y = -log(p_adj), alpha = sig, col = sig)) + geom_point() + scale_color_manual(values = c("Red", "Black")) + scale_alpha_manual(values = c(1, 0.1)) + geom_text(data = subset(p, sig == "0.01"), aes(label = kmer), nudge_y = 1) + theme_cowplot() + labs(title = names(all_kmer)[x])
+}
+
+lapply(x, kmer_plot)
+
+motif_plot <- function(x){
+  p <- all_motif[[x]] %>% mutate(sig = ifelse(p_adj < 0.05, "0.05", "ns"))
+  p %>% ggplot(aes(x = log2FC, y = -log(p_adj), alpha = sig, col = sig)) + geom_point() + scale_color_manual(values = c("Red", "Black")) + scale_alpha_manual(values = c(1, 0.1)) + geom_text(data = subset(p, sig == "0.05"), aes(label = RBP_name), nudge_y = 1) + theme_cowplot() + labs(title = names(all_motif)[x])
+}
+
+lapply(x, motif_plot)
+
+igf2bp_plot <- function(x){
+  p <- all_motif[[x]] %>% mutate(igf2bp1 = ifelse(RBP_name =="Igf2bp1", "Igf2bp1", ""))
+  p %>% ggplot(aes(x = log2FC, y = -log(p_adj), alpha = igf2bp1, col = igf2bp1)) + geom_point() + scale_color_manual(values = c("Black", "Red")) + scale_alpha_manual(values = c(0.1, 1)) + geom_text(data = subset(p, igf2bp1 == "Igf2bp1"), aes(label = RBP_name), nudge_y = 1) + theme_cowplot() + labs(title = names(all_motif)[x]) + geom_hline(yintercept = -log(0.05))
+}
+lapply(x, igf2bp_plot)
+
+```
+
+
+```{r, }
+
+BAZC_compare <- function(caseDNAStringSet, ctrlDNAStringSet){
+   BAZC_BP <- "GGACT[ATGC]{10,25}[CA]CA[CT]"
+   min_BAZC <- "ACACCCACACCC"
+
+   if(any(names(caseDNAStringSet) %in% names(ctrlDNAStringSet))){
+     warning("some sequences in case set are also in the control set. This is not recommended.")
+   }
+  
+   print("counting patterns...", quote = FALSE)
+   case_min <- vcountPattern(min_BAZC, caseDNAStringSet, max.mismatch = 1) / width(caseDNAStringSet)
+   case_BP <- str_count(caseDNAStringSet, BAZC_BP) / width(caseDNAStringSet)
+   ctrl_min <- vcountPattern(min_BAZC, ctrlDNAStringSet, max.mismatch = 1) / width(ctrlDNAStringSet)
+   ctrl_BP <- str_count(ctrlDNAStringSet, BAZC_BP) / width(ctrlDNAStringSet)
+   print("counting complete.", quote= FALSE)
+
+  wilcox.p_min <- wilcox.test(case_min, ctrl_min)$p.value
+  mean_case_min <- mean(case_min)
+  mean_ctrl_min <- mean(ctrl_min)
+  mean_FC_min <- mean_case_min/mean_ctrl_min
+  CliffDelta_min <- effsize::cliff.delta(case_min, ctrl_min)$estimate
+  wilcox.p_BP <- wilcox.test(case_BP, ctrl_BP)$p.value
+  mean_case_BP <- mean(case_BP)
+  mean_ctrl_BP <- mean(ctrl_BP)
+  mean_FC_BP <- mean_case_BP/mean_ctrl_BP
+  CliffDelta_BP <- effsize::cliff.delta(case_BP, ctrl_BP)$estimate
+  
+  data.frame(wilcox.p_min, mean_case_min, mean_ctrl_min, mean_FC_min, CliffDelta_min, wilcox.p_BP, mean_case_BP, mean_ctrl_BP, mean_FC_BP, CliffDelta_BP)
+}
+
+all_BAZC <- lapply(x, function(x)  BAZC_compare(case_dat[[x]], ctrl_dat[[x]]))
+names(all_BAZC) <- lapply(x, function(x) paste(names(case_dat)[x], "_BAZC", sep = ""))
+
+bind_rows(all_BAZC, .id = "seqs") %>% separate(seqs, into = c("longest", "feature", "construct", "loc", "BAZC"), sep = "_") %>% ggplot(aes(x = feature, y = CliffDelta_min, fill = -log(wilcox.p_min))) + geom_bar(stat = "identity") + theme_cowplot() + facet_grid(construct~loc) + scale_fill_gradient(name = "pval", trans = "log", low = "grey", high = "red", limits = c(3, 13)) + scale_x_discrete(limits=c("whole", "5UTR", "CDS", "3UTR")) + labs(title = "min BAZC")
+
+bind_rows(all_BAZC, .id = "seqs") %>% separate(seqs, into = c("longest", "feature", "construct", "loc", "BAZC"), sep = "_") %>% ggplot(aes(x = feature, y = CliffDelta_BP, fill = -log(wilcox.p_BP))) + geom_bar(stat = "identity") + theme_cowplot() + facet_grid(construct~loc) + scale_fill_gradient(name = "pval", trans = "log", low = "grey", high = "red", limits = c(3, 15.5)) + scale_x_discrete(limits=c("whole", "5UTR", "CDS", "3UTR")) + labs(title = "BP_BAZC")
+
+
+```
+
+```{r, }
+BAZC_BP <- "GGACT[ATGC]{10,25}[CA]CA[CT]"
+
+BP_whole_FLvT_loc <- as_tibble(str_count(longest_whole_FLvT_loc, BAZC_BP) / width(longest_whole_FLvT_loc)) %>% mutate(sample = "loc", tx = substr(names(longest_whole_FLvT_loc),1,18))
+BP_whole_FLvT_loc_ctrl <- as_tibble(str_count(longest_whole_FLvT_loc_ctrl, BAZC_BP) / width(longest_whole_FLvT_loc_ctrl)) %>% mutate(sample = "loc_ctrl", tx = substr(names(longest_whole_FLvT_loc_ctrl),1,18)) 
+
+BP_whole_FLvT_ret <- as_tibble(str_count(longest_whole_FLvT_ret, BAZC_BP) / width(longest_whole_FLvT_ret)) %>% mutate(sample = "ret", tx = substr(names(longest_whole_FLvT_ret),1,18)) 
+BP_whole_FLvT_ret_ctrl <- as_tibble(str_count(longest_whole_FLvT_ret_ctrl, BAZC_BP) / width(longest_whole_FLvT_ret_ctrl)) %>% mutate(sample = "ret_ctrl", tx = substr(names(longest_whole_FLvT_ret_ctrl),1,18)) 
+
+loc_ret_BP <- rbind(BP_whole_FLvT_loc, BP_whole_FLvT_loc_ctrl) %>% rbind(., BP_whole_FLvT_ret) %>% rbind(., BP_whole_FLvT_ret_ctrl)
+
+my_comparisons <- list(c("loc", "loc_ctrl"),
+                    c("ret", "ret_ctrl"))
+
+loc_ret_BP %>% ggplot(aes(x = sample, y = value, fill = sample, alpha = 0.5)) + geom_violin() + geom_boxplot(width = 0.25, alpha = 0.5) + theme_cowplot() + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", ) + guides(fill = FALSE, alpha = FALSE, col = FALSE) + labs(x = "", title = "whole transcript, FLvT genes") + scale_fill_manual(values = c("#478BE7", "#44C4AA", "#F96400", "#FAC70A"))
+
+  fisher <- function(a, b, c, d){
+  mat <- matrix(c(a, b, c, d), nr = 2)
+  fisher.test(mat, alternative = "two.sided")$p.value
+  }
+  
+  fisher(sum(grepl(BAZC_BP, longest_whole_FLvT_loc)), sum(grepl(BAZC_BP, longest_whole_FLvT_loc_ctrl)), length(longest_whole_FLvT_loc) - sum(grepl(BAZC_BP, longest_whole_FLvT_loc)), length(longest_whole_FLvT_loc_ctrl) - sum(grepl(BAZC_BP, longest_whole_FLvT_loc_ctrl)))
+
+  
+  BP_whole_FL_loc <- as_tibble(str_count(longest_whole_FL_loc, BAZC_BP) / width(longest_whole_FL_loc)) %>% mutate(sample = "loc", tx = substr(names(longest_whole_FL_loc),1,18))
+BP_whole_FL_loc_ctrl <- as_tibble(str_count(longest_whole_FL_loc_ctrl, BAZC_BP) / width(longest_whole_FL_loc_ctrl)) %>% mutate(sample = "loc_ctrl", tx = substr(names(longest_whole_FL_loc_ctrl),1,18)) 
+
+BP_whole_FL_ret <- as_tibble(str_count(longest_whole_FL_ret, BAZC_BP) / width(longest_whole_FL_ret)) %>% mutate(sample = "ret", tx = substr(names(longest_whole_FL_ret),1,18)) 
+BP_whole_FL_ret_ctrl <- as_tibble(str_count(longest_whole_FL_ret_ctrl, BAZC_BP) / width(longest_whole_FL_ret_ctrl)) %>% mutate(sample = "ret_ctrl", tx = substr(names(longest_whole_FL_ret_ctrl),1,18)) 
+
+loc_ret_BP <- rbind(BP_whole_FL_loc, BP_whole_FL_loc_ctrl) %>% rbind(., BP_whole_FL_ret) %>% rbind(., BP_whole_FL_ret_ctrl)
+
+my_comparisons <- list(c("loc", "loc_ctrl"),
+                    c("ret", "ret_ctrl"))
+
+loc_ret_BP %>% ggplot(aes(x = sample, y = value, fill = sample, alpha = 0.5)) + geom_violin() + geom_boxplot(width = 0.25, alpha = 0.5) + theme_cowplot() + stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label.y = 0.002) + guides(fill = FALSE, alpha = FALSE, col = FALSE) + labs(x = "", y = "ActBP Frequency", title = "whole transcript, FL genes") + scale_fill_manual(values = c("#478BE7", "#44C4AA", "#F96400", "#FAC70A")) + scale_y_continuous(limits = c(0,0.002))
+
+  fisher(sum(grepl(BAZC_BP, longest_whole_FL_loc)), sum(grepl(BAZC_BP, longest_whole_FL_loc_ctrl)), length(longest_whole_FL_loc) - sum(grepl(BAZC_BP, longest_whole_FL_loc)), length(longest_whole_FL_loc_ctrl) - sum(grepl(BAZC_BP, longest_whole_FL_loc_ctrl)))
+
+
+ZG <- readRDS("xtail.LR.ZBP1vsGFP")
+ZK <- readRDS("xtail.LR.ZBP1vsKH34")
+
+p <- loc_ret_BP %>% left_join(., t2g, by = c("tx" = "target_id")) %>% left_join(., ZG) %>% select(value, sample, ensembl_gene_id,log2FC_LR_final) %>% rename("log2FC_LR_final" = "ZG_FC") %>% left_join(., ZK) %>% select(value, sample, ensembl_gene_id, ZG_FC, log2FC_LR_final) %>% rename("log2FC_LR_final" = "ZK_FC") %>% mutate(BP = ifelse(value == 0, 0, 1)) %>% filter(sample == "loc" | sample == "loc_ctrl")
+p %>% ggplot(aes(x = ZG_FC, col = as.character(BP))) + stat_ecdf(size = 2) + theme_cowplot() + scale_x_continuous(limits = c(-0.5,0.5)) + labs(x = "ZBP1_LR - GFP_LR", title = "Whole transcript")
+wilcox.test((p %>% filter(BP == 1) %>% pull(., ZG_FC)), (p %>% filter(BP == 0) %>% pull(., ZG_FC)))
+
+p %>% ggplot(aes(x = ZK_FC, col = as.character(BP))) + stat_ecdf(size = 2) + theme_cowplot() + scale_x_continuous(limits = c(-0.5,0.5)) + labs(x = "ZBP1_LR - KH34_LR", title = "Whole transcript")
+wilcox.test((p %>% filter(BP == 1) %>% pull(., ZK_FC)), (p %>% filter(BP == 0) %>% pull(., ZK_FC)))
+```
+
+
