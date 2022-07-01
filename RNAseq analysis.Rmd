@@ -35,11 +35,11 @@ ens2gene <- unique(ens2gene)
 
 base_dir <- "CAD_ZBP1_Rescue_quants"
 
-files <- list.files()
+files <- list.files(base_dir)
 files <- files[c(1:9,11:12,14:20)]
 samples <- str_sub(files, 1, str_length(files)-9)
 
-salm_dirs <- sapply(samples, function(id) file.path(paste(id,".quant.sf",sep = "")))
+salm_dirs <- sapply(samples, function(id) file.path(paste(base_dir,"/",id,".quant.sf",sep = "")))
 tx2gene <- t2g[,c(1,2)]
 colnames(tx2gene) <- c('TXNAME', 'GENEID')
 
@@ -63,7 +63,7 @@ dat <- t(tpms) %>%
 
 dat_all <- dat %>%
   separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), sep = "_") %>% 
-  select(treatment, fraction, rep, everything(), -cell, -loxp)
+  dplyr::select(treatment, fraction, rep, everything(), -cell, -loxp)
 
 autoplot(prcomp(log(dat_all[4:ncol(dat_all)]+1)), 
          data = dat_all,
@@ -71,7 +71,8 @@ autoplot(prcomp(log(dat_all[4:ncol(dat_all)]+1)),
          shape = "fraction",
          size = 5) +
   ggtitle("PCA of log(TPMs)") +
-  theme_cowplot()
+  theme_cowplot() +
+  scale_color_manual(values = c("#4DB481", "#76458E", "#4DB4E3"))
 
 ```
 
@@ -93,7 +94,7 @@ norm_counts_PCAdat <- t(norm_counts) %>%
   as_tibble() %>%
   mutate(sample = colnames(norm_counts)) %>%
   separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), sep = "_") %>% 
-  select(treatment, fraction, rep, everything(), -cell, -loxp)
+  dplyr::select(treatment, fraction, rep, everything(), -cell, -loxp)
 
 autoplot(prcomp(log(norm_counts_PCAdat[4:ncol(norm_counts_PCAdat)]+1)),
          data = norm_counts_PCAdat,
@@ -101,7 +102,8 @@ autoplot(prcomp(log(norm_counts_PCAdat[4:ncol(norm_counts_PCAdat)]+1)),
          size = 5, 
          shape = "fraction") +
   ggtitle("PCA of log(normalized counts)") +
-  theme_cowplot()
+  theme_cowplot() +
+  scale_color_manual(values = c("#4DB481", "#76458E", "#4DB4E3"))
 
 ```
 
@@ -112,10 +114,16 @@ autoplot(prcomp(log(norm_counts_PCAdat[4:ncol(norm_counts_PCAdat)]+1)),
 
 temp <- norm_counts
 colnames(temp) <- substr(colnames(norm_counts),10, 28)
-annoDF <- as.data.frame(colnames(temp)) %>% as_tibble() %>% separate("colnames(temp)",into = c("Construct", "Fraction", "rep"), sep = "_" ) %>% select(Construct, Fraction) %>% as.data.frame()
+annoDF <- as.data.frame(colnames(temp)) %>% as_tibble() %>% separate("colnames(temp)",into = c("Construct", "Fraction", "rep"), sep = "_" ) %>% dplyr::select(Construct, Fraction) %>% as.data.frame()
+
+ann_colors = list(
+    Fraction = c(soma = "white", neurite = "black"),
+    Construct = c(GFP = "#4DB481", KH34 = "#76458E", ZBP1 = "#4DB4E3"))
+
 rownames(annoDF) <- colnames(temp)
 cor_mat <- temp %>% cor(method = "spearman")
-pheatmap(cor_mat, annotation_col = annoDF)
+
+pheatmap(cor_mat, annotation_col = annoDF, annotation_colors = ann_colors)
 
 dds2 <- DESeq(dds,test="LRT",reduced = ~1)
 
@@ -147,13 +155,13 @@ LR_tidy <- norm_counts %>%
   as.data.frame() %>%  
   as_tibble(rownames = "Gene") %>%
   mutate(LR_GFP_rep1 = CAD_loxP_GFP_neurite_rep1/CAD_loxP_GFP_soma_rep1, LR_GFP_rep2 = CAD_loxP_GFP_neurite_rep2/CAD_loxP_GFP_soma_rep2, LR_GFP_rep3 = CAD_loxP_GFP_neurite_rep3/CAD_loxP_GFP_soma_rep3, LR_KH34_rep1 = CAD_loxP_KH34_neurite_rep1/CAD_loxP_KH34_soma_rep1, LR_KH34_rep2 = CAD_loxP_KH34_neurite_rep2/CAD_loxP_KH34_soma_rep2, LR_KH34_rep3 = CAD_loxP_KH34_neurite_rep3/CAD_loxP_KH34_soma_rep4, LR_ZBP1_rep1 = CAD_loxP_ZBP1_neurite_rep1/CAD_loxP_ZBP1_soma_rep1, LR_ZBP1_rep2 = CAD_loxP_ZBP1_neurite_rep2/CAD_loxP_ZBP1_soma_rep2, LR_ZBP1_rep3 = CAD_loxP_ZBP1_neurite_rep3/CAD_loxP_ZBP1_soma_rep3) %>% 
-  select(Gene, contains("LR"))
+  dplyr::select(Gene, contains("LR"))
 
 is.na(LR_tidy)<-sapply(LR_tidy, is.infinite)
 LR_tidy[is.na(LR_tidy)] <- 0
 
 LRPCAdat <- LR_tidy %>% 
-  select(-Gene) %>% 
+  dplyr::select(-Gene) %>% 
   as.data.frame()
 
 rownames(LRPCAdat) <- LR_tidy$Gene
@@ -161,7 +169,7 @@ LRPCAdat <- t(LRPCAdat) %>%
   as_tibble() %>%
   mutate(sample = colnames(LRPCAdat)) %>%
   separate(sample, into = c("LR", "treatment", "rep"), sep = "_") %>%
-  select(treatment, rep, everything(), -LR)
+  dplyr::select(treatment, rep, everything(), -LR)
 
 autoplot(prcomp(log2(LRPCAdat[3:ncol(LRPCAdat)]+1)),
          data = LRPCAdat, 
@@ -209,7 +217,7 @@ tidy_dat <- norm_counts %>%
   gather(key = sample, value = norm_counts, -gene, - ensembl_gene_id) %>%
   separate(sample, into = c("cell", "loxp", "treatment", "fraction", "rep"), sep = "_") %>% 
   mutate(norm_counts = as.numeric(norm_counts)) %>% 
-  select(gene, treatment, fraction, rep, norm_counts)
+  dplyr::select(gene, treatment, fraction, rep, norm_counts)
 
 tidy_dat %>% filter(gene == "Igf2bp1") %>% ggplot(aes(x = treatment, y = as.numeric(norm_counts), fill = fraction)) + geom_boxplot() + geom_point(position = position_jitterdodge()) + labs(x = "", y = "Normalized Counts", title = "ZBP1") +
   theme_cowplot()
@@ -237,7 +245,7 @@ LR_tidier <- LR_tidy %>%
   unique() %>% 
   gather(key = sample, value = LR, -gene, -Gene) %>%
   separate(sample, into = c("LRlabel", "treatment", "rep"), sep = "_") %>% 
-  mutate(LR = as.numeric(LR)) %>% select(gene, treatment, rep, LR)
+  mutate(LR = as.numeric(LR)) %>% dplyr::select(gene, treatment, rep, LR)
 
 LR_tidier %>% filter(gene == "Igf2bp1") %>% ggplot(aes(x = treatment, y = as.numeric(log2(LR)), col = treatment, size = 5)) + geom_point() + labs(x = "", y = "Log2(Localization Ratio)", title = "ZBP1") + guides(col = FALSE, size = FALSE) + theme_cowplot()
 
@@ -265,9 +273,9 @@ seq_run <- c("1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "2", "1", "1
 type <- c("paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end","paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end", "paired-end")
 colData <- data.frame("sample" = samples, "Conditions" = conditions, "seq_run" = seq_run, "Type" = type)
 
-dds_qc <- DESeqDataSetFromTximport(txi, colData = colData, design = ~seq_run + Conditions)
+dds_qc <- DESeqDataSetFromTximport(txi, colData = colData, design = ~Conditions)
 dds_qc <- DESeq(dds_qc)
-res <- results(dds_qc)
+res <- results(dds_qc, contrast = c("Conditions", "neurite", "soma"))
 
 ```
 
@@ -276,41 +284,239 @@ res <- results(dds_qc)
 ```{r, }
 simpleres <- res %>%
   as_tibble(rownames = "ensembl_gene_id") %>%
-  select(ensembl_gene_id, log2FoldChange) %>% 
-  mutate(GO = "All Genes")
+  dplyr::select(ensembl_gene_id, log2FoldChange) %>% 
+  mutate(GO = "All Genes") %>%
+  left_join(t2g[2:3]) %>% 
+  unique()
 
-#RPgenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0005840'), mart = mart) %>% as_tibble() %>% mutate(GO = "RP") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
+#Ribosomegenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0005840'), mart = mart) %>% as_tibble() %>% mutate(GO = "Ribosome") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
 
 #ETCgenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0022900'), mart = mart) %>% as_tibble() %>% mutate(GO = "ETC") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
 
 #nucleargenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0005634'), mart = mart) %>% as_tibble() %>% mutate(GO = "nuclear") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
 
-#saveRDS(RPgenes, file = "Ribosomal_Protein_Gene_list")
+#synapsegenes <- getBM(attributes = c('ensembl_gene_id'), filters = c('go_parent_term'), values = c('GO:0045202'), mart = mart) %>% as_tibble() %>% mutate(GO = "synapse") %>% left_join(.,simpleres, by = "ensembl_gene_id") %>% select(ensembl_gene_id,log2FoldChange,GO.x) %>% rename("GO" = "GO.x")
+
+#saveRDS(Ribosomegenes, file = "Ribosomal_Protein_Gene_list")
 #saveRDS(ETCgenes, file = "ETC_Gene_list")
 #saveRDS(nucleargenes, file = "nuclear_Gene_list")
+#saveRDS(synapsegenes, file = "synapse_Gene_list")
 
-RPgenes <-readRDS(file = "Ribosomal_Protein_Gene_list")
-ETCgenes <-readRDS(file = "ETC_Gene_list")
-nucleargenes <-readRDS(file = "nuclear_Gene_list")
+Ribosomegenes <-readRDS(file = "Ribosomal_Protein_Gene_list") %>% left_join(t2g[2:3]) %>% unique()
+ETCgenes <-readRDS(file = "ETC_Gene_list") %>% left_join(t2g[2:3]) %>% unique()
+nucleargenes <-readRDS(file = "nuclear_Gene_list") %>% left_join(t2g[2:3]) %>% unique()
+synapsegenes <- readRDS(file = "synapse_Gene_List") %>% left_join(t2g[2:3]) %>% unique()
+
+ETCgenes_mm <- readRDS(file = "/Users/raegoering/Documents/TaliaferroLab/ABHaLoSeq/mm_ETCgenes.txt")
+Mito_Mat_mm <- readRDS(file = "/Users/raegoering/Documents/TaliaferroLab/ABHaLoSeq/mm_mitomatrixgenes.txt")
+Mito_tx_mm <- readRDS(file = "/Users/raegoering/Documents/TaliaferroLab/ABHaLoSeq/mm_mitotranscript.txt")
+
+RPgenes <- simpleres %>% filter(startsWith(prefix = "Rpl", ext_gene) | startsWith(prefix = "Rps", ext_gene)) %>% mutate(GO = "RP")
+ETCgenes2 <- simpleres %>% filter(ensembl_gene_id %in% ETCgenes_mm) %>% mutate(GO = "ETC2")
+Mito_Matgenes <- simpleres %>% filter(ensembl_gene_id %in% Mito_Mat_mm) %>% mutate(GO = "Mito_Mat")
+Mito_txgenes <- simpleres %>% filter(ensembl_gene_id %in% Mito_tx_mm) %>% mutate(GO = "Mito_tx")
+
+
+lnc <- getBM(attributes= c('ensembl_gene_id'),filters = "biotype", value = 'lncRNA', mart = mart)
+pro <- getBM(attributes= c('ensembl_gene_id'),filters = "biotype", value = 'protein_coding',mart = mart)
+sno <- getBM(attributes= c('ensembl_gene_id'),filters = "biotype", value = 'snoRNA',mart = mart)
+sn <- getBM(attributes= c('ensembl_gene_id'),filters = "biotype", value = 'snRNA',mart = mart)
+
+
+lncgenes <- simpleres %>% filter(ensembl_gene_id %in% lnc$ensembl_gene_id) %>% mutate(GO = "lnc")
+progenes <- simpleres %>% filter(ensembl_gene_id %in% pro$ensembl_gene_id) %>% mutate(GO = "pro")
+snogenes <- simpleres %>% filter(ensembl_gene_id %in% sno$ensembl_gene_id) %>% mutate(GO = "sno")
+sngenes <- simpleres %>% filter(ensembl_gene_id %in% sn$ensembl_gene_id) %>% mutate(GO = "sn")
+
+
+```
+
+```{r, }
 
 my_comparisons <- list(c("All Genes", "ETC"),
                     c("All Genes", "nuclear"),
-                    c("All Genes", "RP"))
+                    c("All Genes", "Ribosome"),
+                    c("All Genes", "synapse"),
+                    c("All Genes", "ETC2"),
+                    c("All Genes", "Mito_Mat"),
+                    c("All Genes", "Mito_tx"),
+                    c("All Genes", "RP"),
+                    c("All Genes", "pro"),
+                    c("All Genes", "lnc"),
+                    c("All Genes", "sno"),
+                    c("All Genes", "sn"))
 
-rbind(simpleres,RPgenes,ETCgenes,nucleargenes) %>%
-    as_tibble() %>% 
-    ggplot(aes(x = GO, y = -log2FoldChange, fill = GO)) +
-    geom_boxplot(notch = TRUE, outlier.shape = NA) +
-    geom_point(position = position_jitter(width = 0.1), alpha = 0.05) +
-    geom_hline(yintercept = 0) +
-    stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label.y = c(4.75, 5.5, 6.25)) +
-    coord_cartesian(ylim = c(-5,7)) + 
+rbind(simpleres,Ribosomegenes,ETCgenes,nucleargenes,synapsegenes,RPgenes,Mito_Matgenes,Mito_txgenes,ETCgenes2,progenes,lncgenes,snogenes,sngenes) %>%
+    as_tibble() %>% na.omit() %>% 
+    ggplot(aes(x = GO, y = log2FoldChange, fill = GO)) +
+    geom_boxplot(notch = TRUE, outlier.shape = NA)  +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    EnvStats::stat_n_text(y.pos = -1.5) +
+    stat_compare_means(comparisons = my_comparisons, method = "wilcox.test",label = "p.signif", size = 7, label.y = c(1.0, 1.25, 1.5)) +
+    coord_cartesian(ylim = c(-2,3)) + 
     guides(fill = FALSE) +
     ylab("log2(Localization Ratio)") +
     guides(fill = FALSE) +
     theme_cowplot()
 
+###pretty version
+
+my_comparisons <- list(c("All Genes", "pro"),
+                       c("All Genes", "sno"),
+                       c("All Genes", "ETC2"),
+                       c("All Genes", "RP"))
+
+rbind(simpleres,RPgenes,ETCgenes2,progenes,snogenes) %>%
+    as_tibble() %>% na.omit() %>% 
+    ggplot(aes(x = GO, y = log2FoldChange, fill = GO)) +
+    geom_violin() +
+    geom_boxplot(outlier.shape = NA, width = 0.3)  +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    EnvStats::stat_n_text(y.pos = -1.8) +
+    stat_compare_means(comparisons = my_comparisons, method = "wilcox.test",label = "p.signif", size = 7, vjust = 0.5, label.y = c(0.5,0.75,1.0,1.25)) +
+    coord_cartesian(ylim = c(-2,3.5)) + 
+    guides(fill = FALSE) +
+    ylab("log2(Localization Ratio)") +
+    guides(fill = FALSE) +
+    theme_cowplot() +
+    scale_x_discrete(limits = c("All Genes", "pro","sno","ETC2","RP"), labels = c("All Genes", "mRNA", "snoRNA","ETC","RP mRNA")) +
+    scale_fill_manual(values = c("#c90076","#ce7e00","#8fce00","#2986cc","#6a329f")) +
+    labs(x = "", y = "Neuronal Localization Ratio, log2")
 
 
 ```
 
+```{r, }
+library(topGO)
+
+topDiffGenes <- function(allScore) {
+   return(allScore < 0.01)
+}
+
+# all genes
+GEA_all <- function(ontology){
+  gene_universe_FDR <- res %>% as_tibble(rownames = "ensembl_gene_id") %>% pull(padj)
+  names(gene_universe_FDR) <- res %>% as_tibble(rownames = "ensembl_gene_id") %>% pull(ensembl_gene_id)
+  
+  go_data <- new("topGOdata",
+                   ontology = ontology,
+                   allGenes = gene_universe_FDR,
+                   geneSel = topDiffGenes,
+                   nodeSize = 5,
+                   annotationFun = annFUN.org,
+                   mapping = "org.Hs.eg",
+                   ID = "ensembl")
+    
+    test.stat <- new("classicCount", testStatistic = GOFisherTest, name = "Fisher test")
+    resultFisher <- getSigGroups(go_data, test.stat)
+  allGO <- usedGO(go_data)
+  GenTable(go_data, pval = resultFisher, orderBy = "weight", ranksOf = "classic", topNodes = length(allGO))
+}
+
+GEA <- function(interesting_genes, ontology, genelist = FALSE){
+ 
+   topDiffGenes <- function(allScore) {
+   return(allScore < 0.01)
+  }
+  
+  gene_universe_FDR <- res %>% as_tibble(rownames = "ensembl_gene_id") %>% pull(padj)
+  names(gene_universe_FDR) <- res %>% as_tibble(rownames = "ensembl_gene_id") %>% pull(ensembl_gene_id)
+  
+
+  gene_universe_int <- factor(as.integer(names(gene_universe_FDR) %in% interesting_genes))
+  names(gene_universe_int) <- names(gene_universe_FDR)
+  
+  go_data <- new("topGOdata",
+                 ontology = ontology,
+                 allGenes = gene_universe_int,
+                 nodeSize = 5,
+                 annotationFun = annFUN.org,
+                 mapping = "org.Mm.eg",
+                 ID = "ensembl")
+  
+  test.stat <- new("classicCount", testStatistic = GOFisherTest, name = "Fisher test")
+  resultFisher <- getSigGroups(go_data, test.stat)
+  allGO <- usedGO(go_data)
+  if(genelist == FALSE) {
+   table <- GenTable(go_data, pval = resultFisher, orderBy = "weight", ranksOf = "classic", topNodes = length(allGO)) %>% as_tibble()
+    return(table)
+  } 
+  if(genelist == TRUE){
+    return(sigGenes(go_data))
+  }
+  #print(knitr::kable(GenTable(go_data, pval = resultFisher, orderBy = "weight", ranksOf = "classic", topNodes = 20), caption = title))
+  #showSigOfNodes(go_data, score(resultFisher), firstSigNodes = 5, useInfo = 'all')
+  #return(table)
+  
+}
+
+
+```
+
+```{r, eval = FALSE}
+Ngenes <- res %>% as_tibble(rownames = "ensembl_gene_id") %>% filter(padj < 0.05, log2FoldChange > 1.5) %>% pull(ensembl_gene_id)
+Sgenes <- res %>% as_tibble(rownames = "ensembl_gene_id") %>% filter(padj < 0.05, log2FoldChange < -1.5) %>% pull(ensembl_gene_id)
+
+pos_BP <- GEA(Ngenes, "BP")
+pos_MF <- GEA(Ngenes, "MF")
+pos_CC <- GEA(Ngenes, "CC")
+pos_GO <- bind_rows(list("BP" = pos_BP, "MF" = pos_MF, "CC" = pos_CC), .id = "ontology")
+write.table(pos_GO, "ZBP1_Neurite_localized_GO.txt")
+
+neg_BP <- GEA(Sgenes, "BP")
+neg_MF <- GEA(Sgenes, "MF")
+neg_CC <- GEA(Sgenes, "CC")
+neg_GO <- bind_rows(list("BP" = neg_BP, "MF" = neg_MF, "CC" = neg_CC), .id = "ontology")
+write.table(neg_GO, "ZBP1_Soma_localized_GO.txt")
+
+```
+
+```{r, echo = FALSE}
+N_GO <- as_tibble(read.table("ZBP1_Neurite_localized_GO.txt", header = TRUE))
+S_GO <- as_tibble(read.table("ZBP1_Soma_localized_GO.txt", header = TRUE))
+```
+
+```{r, fig.width = 10, fig.height=10, echo = FALSE}
+N_GO %>% 
+  mutate(pval=ifelse(grepl(pattern = "<", pval), 
+                     substr(pval,3,nchar(pval)), pval), 
+         pval = as.numeric(pval)) %>% 
+  filter(pval < 0.00001) %>% 
+  arrange(pval) %>% 
+  head(20) %>% 
+  ggplot(aes(x = -log(pval), 
+             y = factor(Term, levels = rev(Term)),
+             col = pval, 
+             size = Significant/Annotated)) +
+  geom_point() + 
+  theme_minimal_grid() +
+  labs(y = "")
+
+S_GO %>% 
+  mutate(pval=ifelse(grepl(pattern = "<", pval), 
+                     substr(pval,3,nchar(pval)), pval), 
+         pval = as.numeric(pval)) %>% 
+  filter(pval < 0.00001) %>% 
+  arrange(pval) %>% 
+  head(20) %>% 
+  ggplot(aes(x = -log(pval), 
+             y = factor(Term, levels = rev(Term)),
+             col = pval, 
+             size = Significant/Annotated)) +
+  geom_point() + 
+  theme_minimal_grid() +
+  labs(y = "")
+```
+
+
+```{r, }
+enst_txi <- tximport(salm_dirs, 
+                type = 'salmon', 
+                tx2gene = tx2gene,
+                dropInfReps = TRUE, 
+                txOut = TRUE,
+                countsFromAbundance = 'lengthScaledTPM')
+
+enst_txi <- data.frame(enst_txi$abundance) 
+
+```

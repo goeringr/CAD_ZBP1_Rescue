@@ -1,0 +1,246 @@
+---
+title: "ZBP1_FeatureReachr"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(FeatureReachR)
+library(Biostrings)
+library(tidyverse)
+library(cowplot)
+```
+
+```{r, eval = FALSE}
+`%notin%` <- Negate(`%in%`)
+
+#load genome data
+mm_filtered_TxDb <- filter_Tx(system.file("extdata", "gencode.vM20.annotation.gff3.gz", package = "FeatureReachR"))
+
+longest_mm <- make_longest_df(mm_filtered_TxDb)
+
+mm_BAZC <- read.table("mmGenesWithACTBZipCode.txt") %>% as_tibble()
+
+#read in Gene lists
+
+ZvG_loc <- read.table("ZBP1vGFP_LocalizedGenelist.txt")$ensembl_gene_id
+ZvK_loc <- read.table("ZBP1vKH34_LocalizedGenelist.txt")$ensembl_gene_id
+shared_loc <- ZvG_loc[ZvG_loc %in% ZvK_loc]
+
+non_loc <- c(read.table("ZBP1_notlocalizedGenelist.txt")$x, ZvG_loc, ZvK_loc,shared_loc) %>% unique()
+
+BAZC_loc <- mm_BAZC %>% filter(ensembl_gene_id %in% shared_loc) %>% mutate(BAZC = fwd+rev) %>% filter(BAZC > 0) %>% pull(ensembl_gene_id) %>% unique()
+BAZC_ctrl <- non_loc[non_loc %notin% BAZC_loc]
+nonBAZC_loc <- mm_BAZC %>% filter(ensembl_gene_id %in% shared_loc) %>% mutate(BAZC = fwd+rev) %>% filter(BAZC == 0) %>% pull(ensembl_gene_id) %>% unique()
+nonBAZC_ctrl <- non_loc[non_loc %notin% nonBAZC_loc]
+
+# get Tx
+BAZC_loc_longest_tx <- gene2Tx(longest_mm, BAZC_loc, "UTR3")
+BAZC_ctrl_longest_tx <- gene2Tx(longest_mm, BAZC_ctrl, "UTR3")
+nonBAZC_loc_longest_tx <- gene2Tx(longest_mm, nonBAZC_loc, "UTR3")
+nonBAZC_ctrl_longest_tx <- gene2Tx(longest_mm, nonBAZC_ctrl, "UTR3")
+
+write_Sequence(mm_filtered_TxDb, BAZC_loc_longest_tx, "UTR3", "ACTBSeqAnalysis/BAZC_localized_longest_UTR3", "fa")
+write_Sequence(mm_filtered_TxDb, BAZC_ctrl_longest_tx, "UTR3", "ACTBSeqAnalysis/BAZC_ctrl_longest_UTR3", "fa")
+write_Sequence(mm_filtered_TxDb, nonBAZC_loc_longest_tx, "UTR3", "ACTBSeqAnalysis/nonBAZC_localized_longest_UTR3", "fa")
+write_Sequence(mm_filtered_TxDb, nonBAZC_ctrl_longest_tx, "UTR3", "ACTBSeqAnalysis/nonBAZC_ctrl_longest_UTR3", "fa")
+```
+
+```{r, }
+
+BAZC_loc_longest_UTR3 <- readDNAStringSet("ACTBSeqAnalysis/BAZC_localized_longest_UTR3.fa")
+BAZC_ctrl_longest_UTR3 <- readDNAStringSet("ACTBSeqAnalysis/BAZC_ctrl_longest_UTR3.fa")
+nonBAZC_loc_longest_UTR3 <- readDNAStringSet("ACTBSeqAnalysis/nonBAZC_localized_longest_UTR3.fa")
+nonBAZC_ctrl_longest_UTR3 <- readDNAStringSet("ACTBSeqAnalysis/nonBAZC_ctrl_longest_UTR3.fa")
+
+
+```
+
+```{r, }
+#LENGTH
+length_plot(BAZC_loc_longest_UTR3, BAZC_ctrl_longest_UTR3) + coord_cartesian(ylim = c(0,15000)) + ggtitle("BAZC localized")
+
+# ZBP1 = "#4DB4E3", KH34 = #76458E", shared = "#5d50a2", grey = "#eef2f5")
+
+bind_rows("case" = get_length(nonBAZC_loc_longest_UTR3),
+          "ctrl" = get_length(nonBAZC_ctrl_longest_UTR3), .id = "group") %>%
+    ggplot(aes(x = group, y = length, fill = group)) +
+    geom_violin() +
+    geom_boxplot(width = 0.25, outlier.shape = NA) +
+    theme_cowplot() +
+    stat_compare_means(comparisons = list(c("case","ctrl")), label.y = 5000, tip.length = 0.005, label = "p.signif", size = 7, vjust = 0.5) +
+    guides(fill = "none") +
+    labs(x = "", y = "length") + 
+    coord_cartesian(ylim = c(0,15000)) +
+    scale_fill_manual(values = c("#444f51", "#eef2f5")) +
+    scale_x_discrete(limits = c("case","ctrl"), labels = c("Localized without\nACTB ZC", "All Other\n Expressed Genes")) +
+    labs(y = "3'UTR length", x = "")
+
+
+#GC
+GC_plot(BAZC_loc_longest_UTR3, BAZC_ctrl_longest_UTR3) + ggtitle("BAZC localized")
+
+bind_rows("case" = get_GC(nonBAZC_loc_longest_UTR3),
+          "ctrl" = get_GC(nonBAZC_ctrl_longest_UTR3), .id = "group") %>%
+    ggplot(aes(x = group, y = GC, fill = group)) +
+    geom_violin() +
+    geom_boxplot(width = 0.25, outlier.shape = NA) +
+    theme_cowplot() +
+    stat_compare_means(comparisons = list(c("case","ctrl")), label = "p.signif", size = 5) +
+    guides(fill = "none") +
+    scale_fill_manual(values = c("#444f51", "#eef2f5")) +
+    scale_x_discrete(limits = c("case","ctrl"), labels = c("Localized without\nACTB ZC", "All Other\n Expressed Genes")) +
+    labs(y = "3'UTR GC content", x = "")
+
+kmer_compare(BAZC_loc_longest_UTR3, BAZC_ctrl_longest_UTR3, 5) %>% kmer_plot() + ggtitle("BAZC localized")
+kmer_compare(nonBAZC_loc_longest_UTR3, nonBAZC_ctrl_longest_UTR3, 5) %>% kmer_plot() + ggtitle("nonBAZC localized")
+
+kmer_compare(BAZC_loc_longest_UTR3, BAZC_ctrl_longest_UTR3, 4) %>% kmer_plot() + ggtitle("BAZC localized")
+kmer_compare(nonBAZC_loc_longest_UTR3, nonBAZC_ctrl_longest_UTR3, 4) %>% kmer_plot() + ggtitle("nonBAZC localized")
+```
+
+```{r, }
+
+# BAZC_RBNS <- motif_compare(RBNS_PWM, BAZC_loc_longest_UTR3, BAZC_ctrl_longest_UTR3)
+# BAZC_cisbpRNA <- motif_compare(CISBPRNA_hs_PWM, BAZC_loc_longest_UTR3, BAZC_ctrl_longest_UTR3)
+# 
+# nonBAZC_RBNS <- motif_compare(RBNS_PWM, nonBAZC_loc_longest_UTR3, nonBAZC_ctrl_longest_UTR3)
+# nonBAZC_cisbpRNA <- motif_compare(CISBPRNA_hs_PWM, nonBAZC_loc_longest_UTR3, nonBAZC_ctrl_longest_UTR3)
+# 
+# write.table(BAZC_RBNS, "ACTBSeqAnalysis/BAZC_localized_RBNS.txt")
+# write.table(BAZC_cisbpRNA, "ACTBSeqAnalysis/BAZC_localized_CisbpRNA.txt")
+# write.table(nonBAZC_RBNS, "ACTBSeqAnalysis/nonBAZC_localized_RBNS.txt")
+# write.table(nonBAZC_cisbpRNA, "ACTBSeqAnalysis/nonBAZC_localized_CisbpRNA.txt")
+
+BAZC_RBNS <-  read.table("ACTBSeqAnalysis/BAZC_localized_RBNS.txt")
+BAZC_cisbpRNA <-  read.table("ACTBSeqAnalysis/BAZC_localized_CisbpRNA.txt")
+nonBAZC_RBNS <-  read.table("ACTBSeqAnalysis/nonBAZC_localized_RBNS.txt")
+nonBAZC_cisbpRNA <-  read.table("ACTBSeqAnalysis/nonBAZC_localized_CisbpRNA.txt")
+
+BAZC_RBNS %>% motif_plot()
+BAZC_cisbpRNA %>% motif_plot()
+nonBAZC_RBNS %>% motif_plot()
+nonBAZC_cisbpRNA %>% motif_plot()
+
+```
+
+## Now for the ACTB ZC
+
+```{r, eval = FALSE}
+BAZC_compare <- function(DNAStringSet, ){
+   BAZC_BP <- "CGGAC[ATGC]{10,25}[CA]CA[CT]"
+   BAZC_BP_rev <- "[CA]CA[CT][ATGC]{10,25}CGGAC"
+   #min_BAZC <- "ACACCCACACCC"
+
+   if(any(names(caseDNAStringSet) %in% names(ctrlDNAStringSet))){
+     warning("some sequences in case set are also in the control set. This is not recommended.")
+   }
+  
+   print("counting patterns...", quote = FALSE)
+   case_BP <- vcountPattern(BAZC_BP_rev, caseDNAStringSet, max.mismatch = 1) / width(caseDNAStringSet)
+   case_BP_rev <- str_count(caseDNAStringSet, BAZC_BP) / width(caseDNAStringSet)
+   ctrl_BP <- vcountPattern(BAZC_BP_rev, ctrlDNAStringSet, max.mismatch = 1) / width(ctrlDNAStringSet)
+   ctrl_BP_rev <- str_count(ctrlDNAStringSet, BAZC_BP) / width(ctrlDNAStringSet)
+   print("counting complete.", quote= FALSE)
+
+}
+
+mm_seqs <- c(BAZC_loc_longest_UTR3, BAZC_ctrl_longest_UTR3) 
+
+mm_BAZC <- str_count(mm_seqs, BAZC_BP)
+mm_BAZC_rev <- str_count(mm_seqs, BAZC_BP_rev)
+
+mm_BAZC <- tibble(target_id = names(mm_seqs),
+       width = width(mm_seqs),
+       fwd = mm_BAZC,
+       rev = mm_BAZC_rev)
+
+mm_BAZC <- mm_BAZC %>% rowwise() %>% mutate(target_id = str_split(target_id, pattern = "\\.")[[1]][1]) %>% left_join(t2g)
+
+write.table(mm_BAZC, "mmGenesWithACTBZipCode.txt")
+```
+
+```{r, }
+BAZC_loc_tx <- names(BAZC_loc_longest_UTR3) %>% str_split("\\.") %>% unlist() %>% .[c(1,3,5,7,9,11)]
+
+Nin_Iqgap1 <- BAZC_loc_longest_UTR3[names(BAZC_loc_longest_UTR3) %in% c("ENSMUST00000085314.10_UTR3", "ENSMUST00000167377.2_UTR3")]
+names(Nin_Iqgap1) <- c("Iqgap1", "Nin")
+
+str_locate_all(Nin_Iqgap1, BAZC_BP)
+str_locate_all(Nin_Iqgap1, BAZC_BP_rev)
+
+ZC_pos <- tibble(gene = c("Iqgap1", "Nin", "Ddr2", "Kctd10", "Nin", "Iqgap1", "Nin"),
+                 element = c("UTR","UTR","UTR","UTR","fwd","rev","rev"),
+                 start = c(2249, 3312, 5548, 2075, 748,120,723),
+                 end = c(1,1,1,1,781,145,752))
+                
+                
+                # fwd = c(NA, list(c(748, 781)), NA,NA),
+                # rev = c(list(c(120, 145)), list(c(723, 752)), NA,NA))
+
+ZC_pos %>% ggplot(aes(y=factor(gene,levels = rev(c("Iqgap1","Nin","Kctd10","Ddr2"))) , yend=factor(gene,levels = c("Iqgap1","Nin","Kctd10","Ddr2")) , x=start, xend=end, color=element, size = element)) + 
+   geom_segment() + theme_cowplot() + labs(y = "", x = "UTR position") +
+   scale_color_manual(values = c("#d62976","#fa7e1e","Grey")) +
+   scale_size_manual(values = c(20,20,15))
+
+```
+
+
+```{r, }
+BAZCgenecount <- mm_BAZC %>% group_by(ensembl_gene_id) %>% summarise(width = max(width), fwd = max(fwd), rev = max(rev)) %>% mutate(BAZC = fwd + rev) %>% select(-fwd,-rev) 
+
+GFPvsZBP1 <-readRDS(file = "xtail.LR.ZBP1vsGFP") %>% as_tibble()
+ZBP1vsKH34 <-readRDS(file = "xtail.LR.ZBP1vsKH34") %>% as_tibble() %>% mutate(log2FC_LR_final = -log2FC_LR_final)
+
+ZBP1vsKH34 %>% 
+    select(ensembl_gene_id,Gene,Gene, log2FC_LR_final, pvalue.adjust) %>% 
+    left_join(BAZCgenecount) %>% 
+    na.omit() %>%  
+    mutate(ZC = ifelse(BAZC == 0, "no", "yes"),
+           ZCbins = ifelse(BAZC == 0, "0", ifelse(BAZC == 1, "1", ifelse(BAZC == 2, "2", "3+")))) %>% 
+    ggplot(aes(x = ZC, y = log2FC_LR_final, color = ZC)) + 
+    geom_boxplot(outlier.shape = NA) + 
+    theme_cowplot() + 
+    stat_compare_means(comparisons = list(c("yes","no")), method = "wilcox", size = 7, label = "p.signif",label.y = 0.5, tip.length = 0.01) +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    coord_cartesian(ylim = c(-0.6,0.8)) +
+    scale_color_manual(values = c("Black","Red")) +
+    guides(color = "none") +
+    labs(x = "ACTB ZC Presence in 3' UTR", y = "LR(ZBP1-KH34)") +
+    EnvStats::stat_n_text(y.pos = -0.58)
+
+GFPvsZBP1 %>% 
+    select(ensembl_gene_id,Gene,Gene, log2FC_LR_final, pvalue.adjust) %>% 
+    left_join(BAZCgenecount) %>% 
+    na.omit() %>%  
+    mutate(ZC = ifelse(BAZC == 0, "no", "yes"),
+           ZCbins = ifelse(BAZC == 0, "0", ifelse(BAZC == 1, "1", ifelse(BAZC == 2, "2", "3+")))) %>% 
+    ggplot(aes(x = ZC, y = log2FC_LR_final, color = ZC)) + 
+    geom_boxplot(outlier.shape = NA) + 
+    theme_cowplot() + 
+    stat_compare_means(comparisons = list(c("yes","no")), method = "wilcox", size = 7, label = "p.signif",label.y = 0.5, tip.length = 0.01, vjust = 0.5) +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    coord_cartesian(ylim = c(-0.6,0.8)) +
+    scale_color_manual(values = c("Black","Red")) +
+    guides(color = "none") +
+    labs(x = "ACTB ZC Presence in 3' UTR", y = "LR(ZBP1-GFP)") +
+    EnvStats::stat_n_text(y.pos = -0.58)
+
+ZBP1vsKH34 %>% 
+    select(ensembl_gene_id,Gene,Gene, log2FC_LR_final, pvalue.adjust) %>% 
+    left_join(BAZCgenecount) %>% 
+    na.omit() %>%  
+    mutate(log2FC_LR_final = -log2FC_LR_final, 
+           ZC = ifelse(BAZC == 0, "no", "yes"),
+           ZCbins = ifelse(BAZC == 0, "0", ifelse(BAZC == 1, "1", ifelse(BAZC == 2, "2", "3+")))) %>% 
+    ggplot(aes(x = ZCbins, y = log2FC_LR_final)) + 
+    geom_boxplot(outlier.shape = NA) + 
+    theme_cowplot() + 
+    stat_compare_means(comparisons = list(c("0","1"), c("0","2"), c("0","3+")), method = "wilcox", size = 7, label = "p.signif",label.y = c(0.5,0.7,0.9)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_cartesian(ylim = c(-0.6,1.2))
+
+```
+
+
+

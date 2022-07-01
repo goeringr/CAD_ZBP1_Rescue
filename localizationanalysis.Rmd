@@ -8,17 +8,18 @@ knitr::opts_chunk$set(echo = TRUE)
 library(biomaRt)
 library(DESeq2)
 library(cowplot)
-library(xtail)
 library(tidyverse)
 library(UpSetR)
 library(enrichR)
+library(ggpubr)
 ```
 
 ```{r, }
 txi <- readRDS(file = "CAD_ZBP1_Rescue_txi")
 t2g <- readRDS(file = "t2g")
-tidy_tpms <- readRDS(file = "CAD_ZBP1_Rescue_tpms")
-
+tpms <- data.frame(txi$abundance) 
+tpms <- tpms[apply(tpms, MARGIN = 1, function(x) any(x > 5)), ] 
+tidy_tpms <- tpms %>% as_tibble(rownames = "ensembl_gene_id")
 ```
 
 ```{r, get organized for xtail}
@@ -76,13 +77,6 @@ ZBP1vsKH34 <-readRDS(file = "xtail.LR.ZBP1vsKH34")
 ##More LR comparisons
 
 ```{r, }
-GFPvsZBP1 %>% mutate(color = ifelse(pvalue.adjust < .05, "FDR < 0.05", "ns")) %>% na.omit() %>% ggplot(aes(x = GFP_log2LR, y = ZBP1_log2LR, col = color, alpha = color)) + 
-  geom_point() + 
-  scale_color_manual(values=c("Red", "Black")) + 
-  scale_alpha_manual(values=c(1, 0.1)) +
-  geom_abline(intercept = 0, slope = 1) +
-  scale_x_continuous(limits = c(-10, 10)) +
-  scale_y_continuous(limits = c(-10, 10))
 
 GFPvsZBP1 %>% filter(pvalue.adjust < .05) %>% nrow()
 
@@ -111,42 +105,132 @@ ZBP1vsKH34 %>% filter(pvalue.adjust < .05) %>% nrow()
 ##Volcano Plots that I can interpret
 
 ```{r,}
-GFPvsZBP1 %>% mutate(color = ifelse(pvalue.adjust < .01, "FDR < 0.01", "ns")) %>% na.omit %>%  ggplot(aes(x = ZBP1_log2LR - GFP_log2LR, y = -log(pvalue.adjust), col = color, alpha = color)) + 
+GFPvsZBP1 %>% 
+  mutate(color = ifelse(pvalue.adjust < .01 & ZBP1_log2LR - GFP_log2LR > 0, "FDR < 0.01", "ns")) %>%
+  na.omit %>% 
+  ggplot(aes(x = ZBP1_log2LR - GFP_log2LR, y = -log10(pvalue.adjust), col = color, alpha = color)) + 
   geom_point() + 
-  scale_color_manual(values=c("Red", "Black")) + 
+  scale_color_manual(values=c("#4DB4E3", "Black")) + 
   scale_alpha_manual(values=c(1, 0.1)) +
   scale_x_continuous(limits = c(-4, 4)) +
   ylab("-log(FDR)") +
-  annotate("text", x = c(2.5,-2.5), y = c(15,15), label = c("49", "16"), size = 7) +
+  annotate("text", x = 2.5, y = 7.5, label = c("49 genes\nmore localized\nby ZBP1"), size = 5) +
   theme_cowplot()
 
 GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% nrow()
 GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% nrow()
 
-GFPvsKH34 %>% mutate(color = ifelse(pvalue.adjust < .01, "FDR<0.01", "ns")) %>% na.omit() %>% ggplot(aes(x = KH34_log2LR - GFP_log2LR, y = -log(pvalue.adjust), col = color, alpha = color)) + 
-  geom_point() + 
-  scale_color_manual(values=c("Red", "Black")) + 
+GFPvsKH34 %>% mutate(color = ifelse(pvalue.adjust < .01 & KH34_log2LR - GFP_log2LR > 0, "FDR < 0.01", "ns")) %>% na.omit() %>% ggplot(aes(x = KH34_log2LR - GFP_log2LR, y = -log10(pvalue.adjust), col = color, alpha = color)) +
+  geom_point() +
+  scale_color_manual(values=c("#e37f4d", "Black")) +
   scale_alpha_manual(values=c(1, 0.1)) +
   scale_x_continuous(limits = c(-4, 4)) +
   ylab("-log(FDR)") +
-  annotate("text", x = c(2.5,-2.5), y = c(25,25), label = c("87", "71"), size = 7)+
+  annotate("text", x = 2.5, y = 20, label = "87 genes\nmore localized\nby ΔKH34", size = 7)+
   theme_cowplot()
 
 GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio > 0) %>% nrow()
 GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% nrow()
 
-ZBP1vsKH34 %>% mutate(color = ifelse(pvalue.adjust < .01, "FDR<0.01", "ns")) %>% na.omit() %>% ggplot(aes(x = ZBP1_log2LR - KH34_log2LR, y = -log(pvalue.adjust), col = color, alpha = color)) +
+ZBP1vsKH34 %>% mutate(color = ifelse(pvalue.adjust < .01 & ZBP1_log2LR - KH34_log2LR > 0, "FDR<0.01", "ns")) %>% na.omit() %>% ggplot(aes(x = ZBP1_log2LR - KH34_log2LR, y = -log10(pvalue.adjust), col = color, alpha = color)) +
   geom_point() + 
-  scale_color_manual(values=c("Red", "Black")) + 
+  scale_color_manual(values=c("#76458E", "Black")) + 
   scale_alpha_manual(values=c(1, 0.1)) +
   scale_x_continuous(limits = c(-4, 4)) +
   ylab("-log(FDR)") +
-  annotate("text", x = c(2.5,-2.5), y = c(20,20), label = c("60", "47"), size = 7)+
+  annotate("text", x = 2.5, y = 22, label = "60 genes\nmore localized\nby KH34", size = 5)+
   theme_cowplot()
   
 
 ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio > 0) %>% nrow()
 ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio < 0) %>% nrow()
+```
+
+```{r, }
+mm_BAZC <- read.table("mmGenesWithACTBZipCode.txt") %>% as_tibble()
+
+as_tibble(GFPvsZBP1) %>% 
+  left_join(mm_BAZC) %>%  
+  dplyr::select(ensembl_gene_id, ZBP1_log2LR, GFP_log2LR, pvalue.adjust, width, fwd,rev,ext_gene) %>%
+  mutate(sig = ifelse(pvalue.adjust < 0.01, "< 0.01", "ns"),
+         color = ifelse(pvalue.adjust < 0.01 & (fwd > 0 | rev > 0), "yes_sig", ifelse(pvalue.adjust < 0.01 & fwd == 0 & rev == 0, "no_sig", "ns"))) %>%
+  na.omit %>% 
+  ggplot(aes(x = ZBP1_log2LR - GFP_log2LR, y = -log(pvalue.adjust), col = color, alpha = color)) + 
+    geom_point() + 
+    scale_color_manual(values=c("Red", "Black", "Blue")) + 
+    scale_alpha_manual(values=c(1, 0.1,1)) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    ylab("-log(FDR)") +
+    annotate("text", x = c(2.5,-2.5), y = c(20,20), label = c("49 genes\nmore localized\nby ZBP1", "16 genes\nmore soma\nretained"), size = 5) +
+    theme_cowplot()
+
+as_tibble(ZBP1vsKH34) %>% 
+  left_join(mm_BAZC) %>%  
+  dplyr::select(ensembl_gene_id, ZBP1_log2LR, KH34_log2LR, pvalue.adjust, width, fwd,rev,ext_gene) %>%
+  mutate(sig = ifelse(pvalue.adjust < 0.01, "< 0.01", "ns"),
+         color = ifelse(pvalue.adjust < 0.01 & (fwd > 0 | rev > 0), "yes_sig", ifelse(pvalue.adjust < 0.01 & fwd == 0 & rev == 0, "no_sig", "ns"))) %>%
+  na.omit %>% 
+  ggplot(aes(x = ZBP1_log2LR - KH34_log2LR, y = -log(pvalue.adjust), col = color, alpha = color)) + 
+    geom_point() + 
+    scale_color_manual(values=c("Red", "Black", "Blue")) + 
+    scale_alpha_manual(values=c(1, 0.1,1)) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    ylab("-log(FDR)") +
+    annotate("text", x = c(2.5,-2.5), y = c(20,20), label = c("49 genes\nmore localized\nby ZBP1", "16 genes\nmore soma\nretained"), size = 5) +
+    theme_cowplot()
+
+as_tibble(GFPvsKH34) %>% 
+  left_join(mm_BAZC) %>%  
+  dplyr::select(ensembl_gene_id, KH34_log2LR, GFP_log2LR, pvalue.adjust, width, fwd,rev,ext_gene) %>%
+  mutate(sig = ifelse(pvalue.adjust < 0.01, "< 0.01", "ns"),
+         color = ifelse(pvalue.adjust < 0.01 & (fwd > 0 | rev > 0), "yes_sig", ifelse(pvalue.adjust < 0.01 & fwd == 0 & rev == 0, "no_sig", "ns"))) %>%
+  na.omit %>% 
+  ggplot(aes(x = KH34_log2LR - GFP_log2LR, y = -log(pvalue.adjust), col = color, alpha = color)) + 
+    geom_point() + 
+    scale_color_manual(values=c("Red", "Black", "Blue")) + 
+    scale_alpha_manual(values=c(1, 0.1,1)) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    ylab("-log(FDR)") +
+    annotate("text", x = c(2.5,-2.5), y = c(20,20), label = c("49 genes\nmore localized\nby ZBP1", "16 genes\nmore soma\nretained"), size = 5) +
+    theme_cowplot()
+
+
+```
+
+### Things that lie on the diagonal line are similarly localized by Full length ZBP1 and the ZBP1 lacking the KH34. These are not of particular interest however may be localized by other ZBP1 RBDs. 
+### Above the diagonal are genes more localized specifically by the KH34 domain than any other ZBP1 RBD
+### Below the diagonal are genes more soma restricted by the H34 domain than any other ZBP1
+
+```{r, }
+alldat <- ZBP1vsKH34 %>% as_tibble() %>% mutate(try = ZBP1_log2LR - KH34_log2LR) %>% dplyr::select(ensembl_gene_id, Gene, try, log2FC_LR_final,pvalue_final)
+```
+
+```{r, }
+library(ggrepel)
+
+alldat <- GFPvsZBP1 %>% as_tibble() %>% dplyr::select(ensembl_gene_id, Gene, log2FC_LR_final,pvalue.adjust) %>% dplyr::rename(ZG_LR = log2FC_LR_final, ZG_pval = pvalue.adjust) %>% mutate(ZG_LR = -ZG_LR) %>% full_join(ZBP1vsKH34) %>% dplyr::select(ensembl_gene_id, Gene, ZG_LR, ZG_pval, log2FC_LR_final, pvalue.adjust) %>% dplyr::rename(ZK_LR = log2FC_LR_final, ZK_pval = pvalue.adjust) %>% mutate(ZK_LR = -ZK_LR) %>% full_join(., GFPvsKH34) %>% dplyr::select(ensembl_gene_id, Gene, ZG_LR, ZG_pval, ZK_LR, ZK_pval, log2FC_LR_final, pvalue.adjust) %>% dplyr::rename(KG_LR = log2FC_LR_final, KG_pval = pvalue.adjust) 
+
+z <- alldat %>% left_join(mm_BAZC) %>%
+    mutate(`ACTB ZC` = ifelse(ZK_pval < 0.01 & ZG_pval < 0.01 & (fwd > 0 | rev > 0), "yes", 
+                              ifelse(ZK_pval < 0.01 & ZG_pval < 0.01 & fwd == 0 & rev == 0, "no", "ns"))) %>%
+    na.omit() %>%
+    unique() 
+   
+z %>%  ggplot(aes(x = ZG_LR, y = ZK_LR)) + 
+    geom_point(aes(color = `ACTB ZC`, alpha = `ACTB ZC`)) +
+    theme_cowplot() + 
+    geom_smooth(aes(x = ZG_LR, y = ZK_LR), method = lm, se = FALSE, inherit.aes = FALSE, col = "black") +
+    stat_cor(method = "spearman", label.y = 1) + 
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    scale_alpha_manual(values = c(0.25,0.01,1)) + 
+    scale_color_manual(values = c("Black","Black","Red")) + 
+    labs(x = "LR ZBP1 - LR GFP", y = "LR ZBP1 - LR KH34") + 
+    geom_text_repel(aes(label = Gene, color = `ACTB ZC`), data = filter(z, Gene %in% c("Ddr2", "Iqgap1","Kctd10","Nin")), )
+
+
+# mm_BAZC %>% filter(ensembl_gene_id %in% shared_genes$ensembl_gene_id) %>% unique() %>% View()
+
 ```
 
 ```{r, }
@@ -163,6 +247,8 @@ FLvstrunclocgenes05 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(rati
 ##23/25 genes are localized in ZBP over GFP and ZBP over KH34
 ```
 
+## Are the same genes localized by ZBP1 and the KH34 domain?
+
 ```{r, what are the chances}
 #neurite localization agreement between FLvsGFP and FLvsKH34
 sum(unlist(FLlocgenes01) %in% unlist(FLvstrunclocgenes01))
@@ -173,6 +259,7 @@ s_ZG_01 <- GFPvsZBP1 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2
 s_ZG_05 <- GFPvsZBP1 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = ZBP1_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% dplyr::select(ensembl_gene_id)
 s_ZK_01 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio < 0) %>% dplyr::select(ensembl_gene_id)
 s_ZK_05 <- ZBP1vsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = ZBP1_log2LR- KH34_log2LR) %>% filter(ratio < 0) %>% dplyr::select(ensembl_gene_id)
+s_KG_01 <- GFPvsKH34 %>% filter(pvalue.adjust<0.01) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% dplyr::select(ensembl_gene_id)
 s_KG_05 <- GFPvsKH34 %>% filter(pvalue.adjust<0.05) %>% mutate(ratio = KH34_log2LR- GFP_log2LR) %>% filter(ratio < 0) %>% dplyr::select(ensembl_gene_id)
 
 #soma localization agreement between FLvsGFP and FLvsKH34
@@ -193,8 +280,141 @@ upset(fromList(upset_dat_05), order.by = "freq", empty.intersections = "on")
 
 ```
 
+```{r, }
+library(eulerr)
+fit <- function(l1,l2,l3, n1, n2, n3) {
+    ab = sum(l1 %in% l2)
+  ac = sum(l1 %in% l3)
+  bc = sum(l2 %in% l3)
+  abc = length(Reduce(intersect, list(l1, l2, l3)))
+  a = length(l1)-abc-ab-ac
+  b = length(l2)-abc-ab-bc
+  c = length(l3)-abc-bc-ac
+  f <- euler(c("A"=a, "B"=b, "C"=c, "A&B"=ab, "A&C"=ac, "B&C"=bc, "A&B&C"=abc))
+  f$labels <- c(n1, n2, n3)
+  return(f)
+}
+
+#GFP = "#4DB481", KH34 = "#76458E", ZBP1 = "#4DB4E3"
+
+p_lab <- paste0("p = ", signif(phyper(25,49,nrow(GFPvsZBP1)-49,60, lower.tail = FALSE),3))
+v <- fit(pull(FLlocgenes01, ensembl_gene_id), pull(FLvstrunclocgenes01, ensembl_gene_id), "", "ZBP1\nlocalized", "KH34\nlocalized", "")
+plot(v, quantities = TRUE, labels = v$labels, main = paste0("Significantly Localized Genes\n", p_lab), fill = c("#4DB4E3","#76458E"))
+
+p_lab <- paste0("p = ", signif(phyper(10,16,nrow(GFPvsZBP1)-16,47, lower.tail = FALSE),3))
+v <- fit(pull(s_ZG_01, ensembl_gene_id), pull(s_ZK_01, ensembl_gene_id), "", "ZBP1 soma\nretained", "KH34 soma\nretained", "")
+plot(v, quantities = TRUE, labels = v$labels, main = paste0("Significantly Soma Retained Genes\n",p_lab),  fill = c("#4DB4E3","#76458E"))
+
+p_lab <- paste0("p = ", signif(phyper(6,49,nrow(GFPvsZBP1)-49,87, lower.tail = FALSE),3))
+v <- fit(pull(FLlocgenes01, ensembl_gene_id), pull(trunclocgenes01, ensembl_gene_id), "", "Full Length ZBP1\nlocalized", "Truncated ZBP1\nlocalized", "")
+plot(v, quantities = TRUE, labels = v$labels, main = paste0("Significantly Localized Genes\n Genes\n",p_lab),  fill = c("#4DB4E3","#e37f4d"))
+
+```
+
+## Are localization targets enriched for CLIP peaks?
+
+```{r, }
+h2m <- readRDS("/Users/raegoering/Documents/TaliaferroLab/ABHaLoSeq/human2mousegeneid.txt") %>% as_tibble()
+
+# https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4839292/
+# gene-level analysis of log2 fold-enrichment scores for  eCLIP samples relative to paired size-matched input, calculated by genic region. - indicates regions not quantified as they fell below minimum read depth cutoffs (see Methods).
+
+ipsc <- read.csv("NIHMS771565-supplement-3.csv",header = TRUE, skip = 3) %>% as_tibble()
+ipsc <- ipsc %>% dplyr::select(Gene.Symbol,ENSEMBL.ID, IMP1.Rep1.CDS, IMP1.Rep1.3..UTR, IMP1.Rep2.CDS, IMP1.Rep2.3..UTR, IgG.CDS,IgG.3..UTR) %>% rowwise() %>%  mutate(ENSEMBL.ID = str_split(ENSEMBL.ID, pattern = "\\.")[[1]][1]) %>% dplyr::rename("Gene" = 1, "ensembl_gene_id" = 2, "R1_CDS" = 3, "R1_UTR" = 4, "R2_CDS" = 5, "R2_UTR" = 6,"IgG_CDS" = 7, "IgG_UTR" = 8) %>% left_join(h2m)
+
+# 674 utr bound, 121 cds bound, only 26 bind both
+ipsc <- ipsc %>% filter(IgG_UTR < 1.5, IgG_CDS <1.5) %>% mutate(UTR = ifelse(R1_UTR > 2.5 & R2_UTR > 2.5, "yes", "no"), CDS = ifelse(R1_CDS > 2.5 & R2_CDS > 2.5, "yes", "no"))
+ipsc_either <- ipsc %>% filter(CDS == "yes" | UTR == "yes") %>% pull(mouse_gene)
+
+
+# CLIPdb http://111.198.139.65/RBP.html
+# human IGF2BP1, eclip only
+postar <- read.csv("POSTAR3_CLIPdb_module_RBP_binding_sites_sub_info.csv",header = TRUE) %>% as_tibble() %>% filter(ProtocolPAR.CLIP.PARalyzerPAR.CLIP.Piranha_0.01eCLIP == "eCLIP")
+postar <- postar %>% dplyr::select(1,2,3,6) %>% dplyr::rename("Gene" = 1, "ensembl_gene_id" = 2, genetype = 3, binding = 4)
+
+#95 bound genes
+postargenes <- postar %>% filter(binding > 150) %>% left_join(h2m) %>% pull(mouse_gene)
+
+```
+
+```{r, }
+p <- GFPvsZBP1 %>% as_tibble() %>% mutate(ZBP1loc = ifelse(log2FC_LR_final < 0 & pvalue.adjust < 0.01, "yes", "no"), postar = ifelse(ensembl_gene_id %in% postargenes, "yes", "no"), ipsc = ifelse(ensembl_gene_id %in% ipsc_either, "yes","no")) %>% group_by(ZBP1loc, ipsc) %>% summarise(hits = n()) %>% spread(ipsc,hits)
+p_lab <- paste0("p = ", p[2:3] %>% as.matrix() %>% fisher.test() %>% .$p.value %>% round(.,digits = 3))
+p  %>% ggplot(aes(x = ZBP1loc, y = yes/no, fill = ZBP1loc)) + geom_bar(stat = "identity") + labs(x = "", y = "ZBP1 CLIP target fraction", title = "iPSC CLIP targets on ZBP1 localized genes") + theme_cowplot() + scale_x_discrete(limits = c("no", "yes"), labels = c("Localization\nUnchanged", "Localization\nIncreased")) + guides(fill = "none") + geom_text(aes(x = "no", y = 0.1, label = p_lab), hjust = -1.5) + scale_fill_manual(values = c("#eef2f5", "#4DB4E3"))
+
+
+p <- GFPvsZBP1 %>% as_tibble() %>% mutate(ZBP1loc = ifelse(log2FC_LR_final < 0 & pvalue.adjust < 0.01, "yes", "no"), postar = ifelse(ensembl_gene_id %in% postargenes, "yes", "no"), ipsc = ifelse(ensembl_gene_id %in% ipsc_either, "yes","no")) %>% group_by(ZBP1loc, postar) %>% summarise(hits = n()) %>% spread(postar,hits)
+p_lab <- paste0("p = ", p[2:3] %>% as.matrix() %>% fisher.test() %>% .$p.value %>% round(.,digits = 3))
+p  %>% ggplot(aes(x = ZBP1loc, y = yes/no, fill = ZBP1loc)) + geom_bar(stat = "identity") + labs(x = "", y = "ZBP1 CLIP target fraction", title = "ENCODE CLIP targets on ZBP1 localized genes") + theme_cowplot() + scale_x_discrete(limits = c("no", "yes"), labels = c("Localization\nUnchanged", "Localization\nIncreased")) + guides(fill = "none") + geom_text(aes(x = "no", y = 0.075, label = p_lab), hjust = -1.5) + scale_fill_manual(values = c("#eef2f5", "#4DB4E3"))
+
+p <- ZBP1vsKH34 %>% as_tibble() %>% mutate(ZBP1loc = ifelse(log2FC_LR_final < 0 & pvalue.adjust < 0.01, "yes", "no"), postar = ifelse(ensembl_gene_id %in% postargenes, "yes", "no"), ipsc = ifelse(ensembl_gene_id %in% ipsc_either, "yes","no")) %>% group_by(ZBP1loc, ipsc) %>% summarise(hits = n()) %>% spread(ipsc,hits)
+p_lab <- paste0("p = ", p[2:3] %>% as.matrix() %>% fisher.test() %>% .$p.value %>% round(.,digits = 3))
+p  %>% ggplot(aes(x = ZBP1loc, y = yes/no, fill = ZBP1loc)) + geom_bar(stat = "identity") + labs(x = "", y = "ZBP1 CLIP target fraction", title = "iPSC CLIP targets on KH34 localized genes") + theme_cowplot() + scale_x_discrete(limits = c("no", "yes"), labels = c("Localization\nUnchanged", "Localization\nIncreased")) + guides(fill = "none") + geom_text(aes(x = "no", y = 0.165, label = p_lab), hjust = -1.5) + scale_fill_manual(values = c("#eef2f5", "#76458E"))
+
+
+p <- ZBP1vsKH34 %>% as_tibble() %>% mutate(ZBP1loc = ifelse(log2FC_LR_final < 0 & pvalue.adjust < 0.01, "yes", "no"), postar = ifelse(ensembl_gene_id %in% postargenes, "yes", "no"), ipsc = ifelse(ensembl_gene_id %in% ipsc_either, "yes","no")) %>% group_by(ZBP1loc, postar) %>% summarise(hits = n()) %>% spread(postar,hits)
+p_lab <- paste0("p = ", p[2:3] %>% as.matrix() %>% fisher.test() %>% .$p.value %>% round(.,digits = 3))
+p  %>% ggplot(aes(x = ZBP1loc, y = yes/no, fill = ZBP1loc)) + geom_bar(stat = "identity") + labs(x = "", y = "ZBP1 CLIP target fraction", title = "ENCODE CLIP targets on KH34 localized genes") + theme_cowplot() + scale_x_discrete(limits = c("no", "yes"), labels = c("Localization\nUnchanged", "Localization\nIncreased")) + guides(fill = "none") + geom_text(aes(x = "no", y = 0.075, label = p_lab), hjust = -1.5) + scale_fill_manual(values = c("#eef2f5", "#76458E"))
+
+KH34loc <- FLlocgenes01$ensembl_gene_id[FLlocgenes01$ensembl_gene_id %in% FLvstrunclocgenes01$ensembl_gene_id]
+
+p <- ZBP1vsKH34 %>% as_tibble() %>% mutate(ZBP1loc = ifelse(ensembl_gene_id %in% KH34loc, "yes", "no"), postar = ifelse(ensembl_gene_id %in% postargenes, "yes", "no"), ipsc = ifelse(ensembl_gene_id %in% ipsc_either, "yes","no")) %>% group_by(ZBP1loc, ipsc) %>% summarise(hits = n()) %>% spread(ipsc,hits)
+p_lab <- paste0("p = ", p[2:3] %>% as.matrix() %>% fisher.test() %>% .$p.value %>% round(.,digits = 3))
+p  %>% ggplot(aes(x = ZBP1loc, y = yes/no, fill = ZBP1loc)) + geom_bar(stat = "identity") + labs(x = "", y = "ZBP1 CLIP target fraction", title = "iPSC CLIP targets on shared loc hits") + theme_cowplot() + scale_x_discrete(limits = c("no", "yes"), labels = c("Localization\nUnchanged", "Localization\nIncreased")) + guides(fill = "none") + geom_text(aes(x = "no", y = 0.2, label = p_lab), hjust = -1.5) + scale_fill_manual(values = c("#eef2f5", "#5d50a2"))
+
+
+p <- ZBP1vsKH34 %>% as_tibble() %>% mutate(ZBP1loc = ifelse(ensembl_gene_id %in% KH34loc, "yes", "no"), postar = ifelse(ensembl_gene_id %in% postargenes, "yes", "no"), ipsc = ifelse(ensembl_gene_id %in% ipsc_either, "yes","no")) %>% group_by(ZBP1loc, postar) %>% summarise(hits = n()) %>% spread(postar,hits)
+
+# p[2:3] %>% as.matrix()
+p_lab <- paste0("p = ns")
+p  %>% ggplot(aes(x = ZBP1loc, y = yes/no, fill = ZBP1loc)) + geom_bar(stat = "identity") + labs(x = "", y = "ZBP1 CLIP target fraction", title = "ENCODE CLIP targets on shared loc hits") + theme_cowplot() + scale_x_discrete(limits = c("no", "yes"), labels = c("Localization\nUnchanged", "Localization\nIncreased")) + guides(fill = "none") + geom_text(aes(x = "no", y = 0.1, label = p_lab), hjust = -1.5) + scale_fill_manual(values = c("#eef2f5", "#5d50a2"))
+
+##KH34trunc
+
+p <- GFPvsKH34 %>% as_tibble() %>% mutate(KH34loc = ifelse(log2FC_LR_final < 0 & pvalue.adjust < 0.01, "yes", "no"), postar = ifelse(ensembl_gene_id %in% postargenes, "yes", "no"), ipsc = ifelse(ensembl_gene_id %in% ipsc_either, "yes","no")) %>% group_by(KH34loc, ipsc) %>% summarise(hits = n()) %>% spread(ipsc,hits)
+p_lab <- paste0("p = ", p[2:3] %>% as.matrix() %>% fisher.test() %>% .$p.value %>% round(.,digits = 3))
+p  %>% ggplot(aes(x = KH34loc, y = yes/no, fill = KH34loc)) + geom_bar(stat = "identity") + labs(x = "", y = "ZBP1 CLIP target fraction", title = "iPSC CLIP targets on ZBP1 localized genes") + theme_cowplot() + scale_x_discrete(limits = c("no", "yes"), labels = c("Localization\nUnchanged", "Localization\nIncreased")) + guides(fill = "none") + geom_text(aes(x = "no", y = 0.1, label = p_lab), hjust = -1.5) + scale_fill_manual(values = c("#eef2f5", "#e37f4d"))
+```
+
+```{r, }
+`%notin%` <- Negate(`%in%`)
+
+FLlocgenes01 %>% mutate(loc = "FL")
+FLvstrunclocgenes01 %>% mutate(loc = "KH34")
+shared_genes <- FLlocgenes01 %>% filter(ensembl_gene_id %in% FLvstrunclocgenes01$ensembl_gene_id) %>% mutate(loc = "shared")
+locunchanged <- rbind(GFPvsZBP1[1:2], ZBP1vsKH34[1:2]) %>% as_tibble() %>% filter(ensembl_gene_id %notin% c(FLlocgenes01$ensembl_gene_id, FLvstrunclocgenes01$ensembl_gene_id)) %>% mutate(loc = "unchanged") %>% dplyr::select(-soma_log2FC) %>% unique()
+
+q <- bind_rows(FLlocgenes01 %>% mutate(loc = "FL"), 
+               FLvstrunclocgenes01 %>% mutate(loc = "KH34"),
+               shared_genes,
+               locunchanged) %>%
+  mutate(postar = ifelse(ensembl_gene_id %in% postargenes, "yes", "no"),
+         ipsc = ifelse(ensembl_gene_id %in% ipsc_either, "yes","no")) %>% 
+  group_by(loc, ipsc) %>%
+  summarise(hits = n()) %>% 
+  spread(ipsc,hits)
+
+q_lab <- q %>% mutate(matrix = list(c(yes, 595, no, 11987)),
+                      fisher = fisher.test(matrix(unlist(matrix),nrow =2))$p.value,
+                      label = paste0("p = ", fisher %>% round(.,digits = 3)),
+                      label2 = ifelse(fisher < 0.001, "***", ifelse(fisher < 0.01, "**", ifelse(fisher < 0.05, "*", ""))))
+                      
+q  %>% ggplot(aes(x = loc, y = yes/no, fill = loc)) + geom_bar(stat = "identity") + labs(x = "", y = "ZBP1 CLIP target fraction", title = "iPSC CLIP targets on ZBP1 localized genes") + theme_cowplot() + scale_x_discrete(labels = c("ZBP1\nLocalized","KH34\nLocalized","Shared\nLocalization","Localization\nUnchanged")) + guides(fill = "none") + geom_text(aes(x = loc, y = yes/no + 0.01,label = label2), data = q_lab, size = 7) + scale_fill_manual(values = c("#4DB4E3","#76458E","#5d50a2", "#eef2f5"))
+
+```
+
 ```{r, GO, fig.width = 25}
 ensembl <- useMart("ensembl", dataset="mmusculus_gene_ensembl")
+
+shared_genes_table <- getBM(attributes=c('ensembl_gene_id',
+                   'external_gene_name', 'external_gene_source', 'description'),
+      filters = "ensembl_gene_id",
+      values = pull(shared_genes, ensembl_gene_id),
+      mart = ensembl) 
+
+```
+
+```{r, }
 
 dbs <- listEnrichrDbs()
 dbs <- c("GO_Molecular_Function_2018", "GO_Cellular_Component_2018", "GO_Biological_Process_2018" , "ChEA_2016" ,"KEGG_2019_Mouse")
@@ -221,13 +441,91 @@ neurite_genes[["GO_Cellular_Component_2018"]] %>% as_tibble() %>% arrange(Adjust
 
 ```
 
+## Now with TOPGO
+
+```{r, }
+
+
+GEA <- function(interesting_genes, ontology, genelist = FALSE){
+ 
+   topDiffGenes <- function(allScore) {
+   return(allScore < 0.01)
+  }
+  
+  gene_universe_FDR <- alldat %>%  pull(ZK_pval)
+  names(gene_universe_FDR) <- alldat %>% pull(ensembl_gene_id) 
+  
+  gene_universe_int <- factor(as.integer(names(gene_universe_FDR) %in% interesting_genes))
+  names(gene_universe_int) <- names(gene_universe_FDR)
+  
+  go_data <- new("topGOdata",
+                 ontology = ontology,
+                 allGenes = gene_universe_int,
+                 nodeSize = 5,
+                 annotationFun = annFUN.org,
+                 mapping = "org.Mm.eg",
+                 ID = "ensembl")
+  
+  test.stat <- new("classicCount", testStatistic = GOFisherTest, name = "Fisher test")
+  resultFisher <- getSigGroups(go_data, test.stat)
+  allGO <- usedGO(go_data)
+  if(genelist == FALSE) {
+   table <- GenTable(go_data, pval = resultFisher, orderBy = "weight", ranksOf = "classic", topNodes = length(allGO)) %>% as_tibble()
+    return(table)
+  } 
+  if(genelist == TRUE){
+    return(sigGenes(go_data))
+  }
+  #print(knitr::kable(GenTable(go_data, pval = resultFisher, orderBy = "weight", ranksOf = "classic", topNodes = 20), caption = title))
+  #showSigOfNodes(go_data, score(resultFisher), firstSigNodes = 5, useInfo = 'all')
+  #return(table)
+  
+}
+```
+
+```{r, echo = FALSE, eval = FALSE}
+`%notin%` <- Negate(`%in%`)
+
+
+a <- GEA(shared_genes$ensembl_gene_id, "BP")
+b <- GEA(shared_genes$ensembl_gene_id, "MF")
+c <- GEA(shared_genes$ensembl_gene_id, "CC")
+sh_GO <- bind_rows(list("BP" = a, "MF" = b, "CC" = c), .id = "ontology")
+write.table(sh_GO, "KH34loc_geneGO.txt")
+
+
+```
+
+I have plotted the top 20 significant gene ontologies. Color indicates significance, while size of dot indicates the proportion of enriched genes within the GO.
+
+```{r, fig.width = 10, fig.height=10, echo = FALSE}
+sh_GO <- as_tibble(read.table("KH34loc_geneGO.txt", header = TRUE))
+
+filter(sh_GO, pval < 0.05) %>% 
+    arrange(pval) %>% 
+    head(20) %>% 
+    ggplot(aes(x = -log10(as.numeric(pval)), 
+               y = factor(Term, levels = rev(unique(Term))),
+               col = as.numeric(pval), 
+               size = Significant/Annotated)) +
+    geom_point() + 
+    theme_minimal_grid() +
+    labs(y = "", title = "Shared localized Gene Significant GO terms") + viridis::scale_color_viridis(begin = 0.35, direction = -1)
+
+filter(sh_GO, pval < 0.05) %>% 
+  arrange(pval) %>% 
+  head(20) %>% ggplot(aes(x = -log10(pval), y = factor(Term, levels = rev(unique(Term)))), fill = -log10(pval)) + geom_bar(orientation = "y", stat = "identity", aes(fill = -log10(pval))) + theme_cowplot() + viridis::scale_fill_viridis(begin = 0.35) + labs(y = "", main = "Enriched Gene Ontologies\nZBP1 shared localized genes")
+```
+
+## SmiFISH candidates
+
 ```{r, smFISH candidate selection}
 
 ##Candidates should be genes localized by KH34 domain but not the truncated ZBP1
 ##Also need high enough expression (TPM > 20)
 
-tpms <- readRDS("ZBP1CADtpms.txt")
-TPM_ave <- tpms %>% as_tibble() %>% mutate(GeneID = rownames(tpms)) %>% dplyr::select(GeneID, everything()) %>% gather(-GeneID, key = sample, value = TPM) %>% separate(sample, into = c("cell", "lox","rescue","compartment","rep")) %>% group_by(GeneID, compartment) %>% summarise(ave = mean(TPM)) %>% spread(value = ave, key = compartment) %>% S4Vectors::rename("neurite" = "Ave_n_TPM", "soma" = "Ave_s_TPM")
+
+TPM_ave <- tpms %>% as_tibble(rownames = "GeneID") %>% dplyr::select(GeneID, everything()) %>% gather(-GeneID, key = sample, value = TPM) %>% separate(sample, into = c("cell", "lox","rescue","compartment","rep")) %>% group_by(GeneID, compartment) %>% summarise(ave = mean(TPM)) %>% spread(value = ave, key = compartment) %>% S4Vectors::rename("neurite" = "Ave_n_TPM", "soma" = "Ave_s_TPM")
 
 high_enough <- TPM_ave %>% filter(Ave_n_TPM > 20 && Ave_s_TPM > 20)
 high_enough_soma <- TPM_ave %>% filter(Ave_s_TPM > 20)
@@ -256,6 +554,7 @@ ZBP1vsKH34 %>% mutate(color = ifelse(ensembl_gene_id %in% pull(soma_Z_K_shared_g
     theme_cowplot() 
 
 ```
+
 
 ```{r,  picking smiFISH candidates}
 ##Lists of these genes
@@ -303,15 +602,31 @@ TPM_ave %>% filter(GeneID %in% sm_soma_cand | GeneID %in% sm_neurite_cand) %>%  
 
 ```
 
+```{r, }
+norm_counts <- read.table("ZBP1fractionationNormCounts.txt")
+
+norm_counts_tidy <- norm_counts %>% as_tibble(rownames = "ensembl_gene_id") %>% gather(-ensembl_gene_id, key = sample, value = norm_counts) %>% mutate(sample = ifelse(sample == "CAD_loxP_KH34_soma_rep4", "CAD_loxP_KH34_soma_rep3", sample)) %>% separate(sample, into = c("CAD", "loxP", "construct", "fraction", "rep")) %>% dplyr::select(-CAD, -loxP) %>% left_join(., t2g[2:3])  %>% unique()  %>% spread(fraction,norm_counts)
+
+norm_counts_tidy %>% filter(ext_gene %in% c("Myrip", "Ankrd11", "Iqgap1", "Ddr2")) %>% ggplot(aes(x = construct, y = log2(neurite/soma))) + geom_point() + facet_grid(.~factor(ext_gene,levels = c("Iqgap1", "Ddr2","Ankrd11","Myrip"))) + theme_cowplot() + scale_color_manual(values = c("#4DB481", "#76458E", "#4DB4E3")) + scale_x_discrete(limits = c("ZBP1", "KH34", "GFP")) + labs(x = "", y = "Neuronal LR, log2")
+
+norm_counts_tidy %>% filter(ext_gene %in% c("Myrip", "Ankrd11", "Iqgap1", "Ddr2")) %>% ggplot(aes(x = construct, y = log2(neurite/soma), color = construct)) + geom_point(size = 4) + facet_grid(.~factor(ext_gene,levels = c("Iqgap1", "Ddr2","Ankrd11","Myrip"))) + theme_cowplot() + scale_color_manual(values = c("#4DB481", "#76458E", "#4DB4E3")) + scale_x_discrete(limits = c("ZBP1", "KH34", "GFP")) + labs(x = "", y = "Neuronal LR, log2") + scale_color_manual(values = c("#4DB481", "#76458E", "#4DB4E3")) + theme(strip.background = element_rect(color = "white", fill = "white")) + theme(text = element_text(size=20), axis.text = element_text(size = 12.5)) + guides(color = "none")
+
+norm_counts_tidy %>% filter(ext_gene %in% c( "Iqgap1", "Ddr2")) %>% ggplot(aes(x = construct, y = log2(neurite/soma), color = construct)) + geom_point(size = 4) + facet_grid(.~ext_gene) + theme_cowplot() + scale_color_manual(values = c("#4DB481", "#76458E", "#4DB4E3")) + scale_x_discrete(limits = c("ZBP1", "KH34", "GFP")) + labs(x = "", y = "Neuronal LR, log2") + theme(strip.background = element_rect(color = "white", fill = "white")) + theme(text = element_text(size=20), axis.text = element_text(size = 12.5)) + guides(color = "none")
+
+```
+
 ```{r, making something helpful I hope}
-# GFPvsZBP1 %>% filter(ensembl_gene_id %in% OligoGeneList_trunc) %>% as_tibble() %>% dplyr::select(ensembl_gene_id, Gene, log2FC_LR_final,pvalue_final) %>% dplyr::rename(ZG_LR = log2FC_LR_final, ZG_pval = pvalue_final) %>% left_join(ZBP1vsKH34) %>% dplyr::select(ensembl_gene_id, Gene, ZG_LR, ZG_pval, log2FC_LR_final, pvalue_final) %>% dplyr::rename(ZK_LR = log2FC_LR_final, ZK_pval = pvalue_final) %>% left_join(., GFPvsKH34) %>% dplyr::select(ensembl_gene_id, Gene, ZG_LR, ZG_pval, ZK_LR, ZK_pval, log2FC_LR_final, pvalue_final) %>% dplyr::rename(KG_LR = log2FC_LR_final, KG_pval = pvalue_final) %>% left_join(TPM_ave, by = c("ensembl_gene_id" = "GeneID")) %>% left_join(., regex) -> savethis
+#rbind(FL_loc_seq, trunc_loc_seq) %>% rbind(., FL_ctrl_seq) %>% rbind(., trunc_ctrl_seq) %>% rbind(., FLvT_loc_seq) %>% rbind(FLvT_ctrl_seq) %>% filter(ensembl_gene_id %in% OligoGeneList_trunc) %>% unique() -> oligo_gene_seq
 
 #regex <- oligo_gene_seq %>% rowwise() %>%  mutate(sub = list(allsubstr(seq, nchar("ACACCCACACCC"))), min_BAZC = length(agrep("ACACCCACACCC", unlist(sub), max.distance = 2)),  BPZC = str_count(string = seq, pattern = BAZC_BP)) %>% select(ensembl_gene_id, min_BAZC, BPZC)
 
-#rbind(FL_loc_seq, trunc_loc_seq) %>% rbind(., FL_ctrl_seq) %>% rbind(., trunc_ctrl_seq) %>% rbind(., FLvT_loc_seq) %>% rbind(FLvT_ctrl_seq) %>% filter(ensembl_gene_id %in% OligoGeneList_trunc) %>% unique() -> oligo_gene_seq
+# GFPvsZBP1 %>% filter(ensembl_gene_id %in% OligoGeneList_trunc) %>% as_tibble() %>% dplyr::select(ensembl_gene_id, Gene, log2FC_LR_final,pvalue_final) %>% dplyr::rename(ZG_LR = log2FC_LR_final, ZG_pval = pvalue_final) %>% left_join(ZBP1vsKH34) %>% dplyr::select(ensembl_gene_id, Gene, ZG_LR, ZG_pval, log2FC_LR_final, pvalue_final) %>% dplyr::rename(ZK_LR = log2FC_LR_final, ZK_pval = pvalue_final) %>% left_join(., GFPvsKH34) %>% dplyr::select(ensembl_gene_id, Gene, ZG_LR, ZG_pval, ZK_LR, ZK_pval, log2FC_LR_final, pvalue_final) %>% dplyr::rename(KG_LR = log2FC_LR_final, KG_pval = pvalue_final) %>% left_join(TPM_ave, by = c("ensembl_gene_id" = "GeneID")) %>% left_join(., regex) -> savethis
+
 
 #saveRDS(savethis, file = "ZBP1_Oligo_gene_list_with_info_no_controls.txt")
 ```
+
+## 3'UTR selection
 
 ```{r, UTRclone candidates}
 #ddr2 iqgap1, myo6, bicd2
